@@ -3,8 +3,27 @@
    ===================================================================== */
 import { $, $$, TODAY, addD, dOff, esc, fmtDate, iso, parse, uid } from '../core/utils.js';
 import { PR, PSTAT, ST } from '../core/constants.js';
-import { seed } from '../data/seed.js';
-import { D, DEFAULT_PREFS, S, allTasks, canSee, commentsOf, logAct, me, mem, proj, save, task, tasksOf, visibleProjects } from '../core/store.js';
+import {
+  D,
+  DEFAULT_PREFS,
+  S,
+  blankWorkspace,
+  canManage,
+  freshSeed,
+  hydrate,
+  memberState,
+  allTasks,
+  canSee,
+  commentsOf,
+  logAct,
+  me,
+  mem,
+  proj,
+  save,
+  task,
+  tasksOf,
+  visibleProjects,
+} from '../core/store.js';
 import { fileType, fsize } from '../ui/helpers.js';
 import { effectiveDark } from '../core/theme.js';
 import { mutate, toast } from '../ui/toast.js';
@@ -13,6 +32,7 @@ import { viewOf } from '../shell/view-engine.js';
 import { TEMPLATES, closeModal, openModal } from '../overlays/modals.js';
 import { closePop, openPop, tgt } from '../overlays/popovers.js';
 import { strengthMeter } from '../pages/settings.js';
+import { attach, createWorkspace, fetchWorkspace, flush, signOutServer } from '../core/sync.js';
 
 export const A = {},
   IN = {},
@@ -311,6 +331,7 @@ A.popPick = el => {
     return;
   }
   if (p.type === 'role') {
+    if (!needManage()) return;
     const m = mem(p.id);
     mutate(() => {
       m.role = v;
@@ -1501,6 +1522,7 @@ A.invite = () => {
   openModal({ type: 'invite' });
 };
 A.submitInvite = () => {
+  if (!needManage()) return;
   const raw = $('#inv-emails').value;
   S.ui.inviteDraft = raw;
   const role = $('#inv-role').value;
@@ -1547,14 +1569,15 @@ A.submitInvite = () => {
     S.ui.modals.pop();
     S.ui.errors = {};
     render();
-    toast(`${list.length} invitation${list.length > 1 ? 's' : ''} sent`);
+    toast(`Added ${list.length} ${list.length > 1 ? 'people' : 'person'}. They get access when they sign in with Google using that email.`, { ms: 5000 });
   });
 };
-A.copyInviteLink = () => copy(`https://gr8rstudio.com/join/${D().ws.url}-7f3k2`, 'Invite link copied');
+// No email is sent: invited people open the app and sign in with Google using the invited address.
+A.copyInviteLink = () => copy(location.origin, 'Link copied. Invited people sign in with Google using the invited email.');
 A.resendInvite = el => {
   S.ui.pop = null;
   render();
-  toast(`Invite resent to ${mem(el.dataset.id).email}`);
+  copy(location.origin, `Link copied. Send it to ${mem(el.dataset.id).email}.`);
 };
 A.viewProfile = el => go('member', { id: el.dataset.id });
 A.assignToMember = el => {
@@ -1562,6 +1585,7 @@ A.assignToMember = el => {
   A.newTask({ dataset: { assignee: el.dataset.id } });
 };
 A.removeMember = el => {
+  if (!needManage()) return;
   const m = mem(el.dataset.id);
   S.ui.pop = null;
   const n = allTasks().filter(t => t.assignee === m.id && t.status !== 'done').length;
@@ -1737,30 +1761,52 @@ A.setSearch = el => {
 };
 
 /* workspace, account, prototype controls */
-A.switchWs = el => {
-  const w = D().workspaces.find(x => x.id === el.dataset.v);
-  S.ui.pop = null;
-  D().ws = { name: w.name, url: w.name.toLowerCase().replace(/[^a-z0-9]+/g, ''), c: w.c, brand: !!w.brand };
-  save();
-  go('home');
-  toast(`Switched to ${w.name}`);
+const rememberWs = id => {
+  try {
+    localStorage.setItem('gr8r.ws', id);
+  } catch {
+    /* storage blocked */
+  }
 };
+function openWs(ws) {
+  hydrate(ws);
+  attach(ws);
+  rememberWs(ws.id);
+  S.ui.drawer = null;
+  S.ui.modals = [];
+}
+A.switchWs = async el => {
+  S.ui.pop = null;
+  S.ui.palette = null;
+  render();
+  await flush();
+  const ws = await fetchWorkspace(el.dataset.v).catch(() => null);
+  if (!ws) return toast("Couldn't open that workspace.", { kind: 'err' });
+  openWs(ws);
+  go('home');
+  toast(`Switched to ${D().ws.name}`);
+};
+/* Only owners and admins can change who has access; the server enforces the same rule. */
+function needManage() {
+  if (canManage()) return true;
+  toast('Only workspace owners and admins can change members.', { kind: 'err' });
+  return false;
+}
 A.newWorkspace = () => {
   S.ui.pop = null;
+  S.ui.onbNew = true;
   S.ui.auth = 'onboarding';
   S.ui.onb = 1;
   S.ui.onbData.ws = '';
   S.ui.onbData.url = '';
   render();
 };
-A.signOut = () => {
+A.signOut = async () => {
   S.ui.pop = null;
   S.ui.palette = null;
-  S.ui.drawer = null;
-  S.ui.modals = [];
-  S.ui.auth = 'login';
-  S.ui.errors = {};
   render();
+  await signOutServer();
+  location.replace('/');
 };
 A.shortcuts = () => {
   S.ui.pop = null;
@@ -1769,6 +1815,7 @@ A.shortcuts = () => {
 };
 A.startOnboarding = () => {
   S.ui.pop = null;
+  S.ui.onbNew = false;
   S.ui.auth = 'onboarding';
   S.ui.onb = 0;
   render();
@@ -1796,9 +1843,9 @@ A.resetDemo = () => {
     danger: true,
     icon: 'rotate-ccw',
     run: () => {
-      S.data = seed();
+      S.data = freshSeed();
       S.views = {};
-      S.prefs = { ...DEFAULT_PREFS, theme: S.prefs.theme };
+      S.prefs = { ...DEFAULT_PREFS, theme: S.prefs.theme, name: S.prefs.name, title: S.prefs.title };
       S.ui.drawer = null;
       save();
       go('home');
@@ -1920,12 +1967,12 @@ A.delWorkspace = () =>
     danger: true,
     typeName: D().ws.name,
     run: () => {
-      S.data = seed();
+      S.data = freshSeed();
       S.views = {};
+      S.ui.drawer = null;
       save();
-      S.ui.auth = 'login';
-      render();
-      toast('Workspace deleted. Demo data was restored for this prototype.', { kind: 'info', ms: 5000 });
+      go('home');
+      toast('Workspace deleted. It now holds the sample data again.', { kind: 'info', ms: 5000 });
     },
   });
 A.avColor = el => {
@@ -2075,52 +2122,9 @@ A.toggleShowPw = () => {
   }
 };
 export const EMAIL_RE = /^\S+@\S+\.\S+$/;
-export function enterApp(msg) {
-  S.ui.auth = null;
-  S.ui.errors = {};
-  go(S.prefs.home || 'home');
-  toast(msg);
-}
-A.doLogin = () => {
-  const e = (S.ui.errors = {});
-  const em = $('#l-email').value.trim(),
-    pw = $('#l-pw').value;
-  S.ui.af.email = em;
-  if (!em) e.email = 'Enter your email address';
-  else if (!EMAIL_RE.test(em)) e.email = 'Enter a valid email, like name@company.com';
-  if (!pw) e.pw = 'Enter your password';
-  if (Object.keys(e).length) {
-    render();
-    (e.email ? $('#l-email') : $('#l-pw'))?.focus();
-    if (!e.email) $('#l-pw').value = pw;
-    return;
-  }
-  loadingBtn('login-btn', 750, () => enterApp(`Signed in as ${em}`));
-};
-A.socialAuth = el => {
+A.googleSignIn = el => {
   el.classList.add('is-loading');
-  setTimeout(() => enterApp(`Signed in with ${el.dataset.v}`), 800);
-};
-A.doSignup = () => {
-  const e = (S.ui.errors = {});
-  const nm = $('#s-name').value.trim(),
-    em = $('#s-email').value.trim(),
-    pw = $('#s-pw').value;
-  S.ui.af.name = nm;
-  S.ui.af.email = em;
-  if (!nm) e.name = 'Enter your name';
-  if (!EMAIL_RE.test(em)) e.email = 'Enter a valid work email';
-  if (pw.length < 10 || !/[0-9\W]/.test(pw)) e.pw = 'Use at least 10 characters, including a number or symbol';
-  if (Object.keys(e).length) {
-    render();
-    $('#s-email').value = em;
-    return;
-  }
-  loadingBtn('signup-btn', 800, () => {
-    S.ui.auth = 'verify';
-    startResend();
-    render();
-  });
+  location.href = '/api/auth/google';
 };
 export function startResend() {
   S.ui.resendT = 30;
@@ -2245,17 +2249,25 @@ A.onbNext = el => {
 };
 A.onbExit = () => {
   S.ui.auth = null;
+  S.ui.onbNew = false;
   render();
 };
-A.onbFinish = () => {
+A.onbFinish = async el => {
   const o = S.ui.onbData;
+  if (S.ui.onbNew) {
+    el?.classList.add('is-loading');
+    try {
+      await flush();
+      openWs(await createWorkspace(blankWorkspace(o.ws.trim() || 'My Workspace'), memberState()));
+    } catch {
+      el?.classList.remove('is-loading');
+      return toast("Couldn't create the workspace. Try again.", { kind: 'err' });
+    }
+    S.ui.onbNew = false;
+  }
   let p;
   mutate(() => {
-    if (o.ws.trim()) {
-      const c = ['#2F2E2A', '#5A67D8', '#23918A', '#C54B78'][D().workspaces.length % 4];
-      D().ws = { name: o.ws.trim(), url: o.url || 'workspace', c };
-      if (!D().workspaces.some(w => w.name === D().ws.name)) D().workspaces.push({ id: uid('w'), name: D().ws.name, c, plan: 'Free' });
-    }
+    if (o.ws.trim()) D().ws = { ...D().ws, name: o.ws.trim(), url: o.url || D().ws.url };
     S.prefs.defaultTab = { kanban: 'board', list: 'list', timeline: 'timeline', table: 'table' }[o.team] || 'board';
     const tm = TEMPLATES.find(t => t.id === o.tmpl) || TEMPLATES[2];
     p = createProject(

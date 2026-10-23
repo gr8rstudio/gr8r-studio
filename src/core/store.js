@@ -2,8 +2,8 @@
 import { TODAY, diffD, iso, parse, uid } from './utils.js';
 import { PCOLORS, TEAMS_SEED } from './constants.js';
 import { seed } from '../data/seed.js';
+import { queueSave, session } from './sync.js';
 
-export const STORE_KEY = 'gr8r.v2';
 export const DEFAULT_PREFS = {
   theme: 'system',
   accent: 'indigo',
@@ -19,23 +19,36 @@ export const DEFAULT_PREFS = {
   name: 'Tanjim Islam',
   title: 'Head of Product',
 };
-export function load() {
+
+/* Workspace data lives on the server (core/sync.js). The browser only keeps UI preferences so the
+   sign-in screen opens in the right theme. STORE_KEY is the pre-sync key: its data is uploaded once
+   on first sign-in, then removed. */
+export const STORE_KEY = 'gr8r.v2';
+export const UI_KEY = 'gr8r.ui';
+function readLocal(key) {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const j = JSON.parse(raw);
-      if (j && j.data && j.data.tasks) return j;
-    }
+    const j = JSON.parse(localStorage.getItem(key) || 'null');
+    return j && typeof j === 'object' ? j : null;
   } catch {
-    /* storage blocked or corrupt: start from seed data */
+    return null; /* storage blocked or corrupt */
   }
-  return null;
 }
-export const saved = load();
+export const legacyWorkspace = () => {
+  const j = readLocal(STORE_KEY);
+  return j?.data?.tasks ? j : null;
+};
+export function dropLegacyWorkspace() {
+  try {
+    localStorage.removeItem(STORE_KEY);
+  } catch {
+    /* storage blocked */
+  }
+}
+export const saved = readLocal(UI_KEY);
 export const S = {
-  data: saved?.data || seed(),
+  data: seed(),
   prefs: Object.assign({}, DEFAULT_PREFS, saved?.prefs || {}),
-  views: saved?.views || {},
+  views: {},
   ui: {
     fx: {},
     auth: null,
@@ -83,16 +96,74 @@ export const S = {
   },
 };
 export let _saveT;
+export const memberState = () => ({ prefs: S.prefs, views: S.views, collapsed: S.ui.collapsed });
 export function save() {
+  queueSave(() => ({ data: S.data, state: memberState() }));
   clearTimeout(_saveT);
   _saveT = setTimeout(() => {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ data: S.data, prefs: S.prefs, views: S.views, collapsed: S.ui.collapsed }));
+      localStorage.setItem(UI_KEY, JSON.stringify({ prefs: S.prefs, collapsed: S.ui.collapsed }));
     } catch {
-      /* storage full or blocked: keep working in memory */
+      /* storage full or blocked: preferences still sync to the server */
     }
   }, 150);
 }
+/* Apply a workspace loaded from the server. */
+export function hydrate(ws) {
+  S.data = ws.data;
+  S.prefs = Object.assign({}, DEFAULT_PREFS, ws.state?.prefs || { name: session.user?.name || DEFAULT_PREFS.name, title: '' });
+  S.views = ws.state?.views || {};
+  S.ui.collapsed = !!ws.state?.collapsed;
+  adoptMe();
+}
+/* The workspace document is shared, so "me" is worked out per browser: the member whose email is the
+   signed-in Google account. Someone joining from an invite becomes active under their Google name. */
+export function adoptMe(user = session.user) {
+  const d = S.data;
+  if (!user) return;
+  const email = user.email.toLowerCase();
+  let m = d.members.find(x => (x.email || '').toLowerCase() === email);
+  if (!m) {
+    const r = session.ws?.role || 'member';
+    m = { id: uid('m'), name: user.name, email, role: r[0].toUpperCase() + r.slice(1), team: '', title: '', c: '#6B7280', status: 'active', last: 0, tz: '—' };
+    d.members.push(m);
+    save();
+  } else if (m.status === 'invited') {
+    Object.assign(m, { name: user.name, status: 'active', last: 0 });
+    save();
+  }
+  d.me = m.id;
+}
+/* Sample workspace with the signed-in person as its owner. The sample people are flagged `demo` so
+   the server never gives their (fictional) email addresses access. */
+export function freshSeed(user = session.user) {
+  const d = seed();
+  d.members.forEach(m => {
+    if (m.id === d.me) Object.assign(m, user ? { name: user.name, email: user.email, role: 'Owner', status: 'active' } : {});
+    else m.demo = true;
+  });
+  return d;
+}
+/* An empty workspace named `name`, owned by the signed-in person. */
+export function blankWorkspace(name, user = session.user) {
+  const d = freshSeed(user);
+  const keys = ['projects', 'tasks', 'comments', 'activity', 'notifs', 'files', 'events', 'projOrder', 'savedViews', 'recentSearches'];
+  keys.forEach(k => (d[k] = []));
+  d.members = d.members.filter(m => m.id === d.me);
+  delete d.teams;
+  d.ws = { name, url: name.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'workspace', c: '#5A67D8' };
+  return d;
+}
+/* Workspaces this person can open, for the switcher. */
+export const workspaceList = () =>
+  session.list.map((w, i) => ({
+    id: w.id,
+    name: w.id === session.ws?.id ? S.data.ws.name : w.name,
+    c: ['#1D1C1A', '#5A67D8', '#23918A', '#C54B78'][i % 4],
+    plan: w.role[0].toUpperCase() + w.role.slice(1),
+  }));
+export const currentWsId = () => session.ws?.id;
+export const canManage = () => ['owner', 'admin'].includes(session.ws?.role);
 
 /* ---------- lookups ---------- */
 export const D = () => S.data;

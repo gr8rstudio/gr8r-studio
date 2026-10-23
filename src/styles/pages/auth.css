@@ -45,6 +45,10 @@
   text-align: center;
 }
 .auth-card .sub {
+  /* undo the sidebar's collapsible .sub list (shell.css), which shares the class name */
+  display: block;
+  padding-left: 0;
+  border-left: 0;
   text-align: center;
   color: var(--text-2);
   margin: -8px 0 4px;

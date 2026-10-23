@@ -2,7 +2,7 @@
 import { MOD, clamp, esc } from '../core/utils.js';
 import { LOGO, ic, wsLogo } from '../core/icons.js';
 import { PSTAT } from '../core/constants.js';
-import { D, S, allTasks, pColor, proj, save, task } from '../core/store.js';
+import { D, S, allTasks, pColor, proj, save, task, workspaceList } from '../core/store.js';
 import { FT, av, hl, stIcon } from '../ui/helpers.js';
 import { effectiveDark } from '../core/theme.js';
 import { go, render } from '../shell/render.js';
@@ -64,9 +64,9 @@ export function paletteItems() {
   if (pl.mode === 'ws') {
     groups.push({
       name: 'Switch workspace',
-      items: D()
-        .workspaces.filter(w => !q || w.name.toLowerCase().includes(ql))
-        .map(w => ({ html: `${wsLogo(w, 20)}`, name: w.name, sub: w.plan + ' plan', run: () => A.switchWs({ dataset: { v: w.id } }) })),
+      items: workspaceList()
+        .filter(w => !q || w.name.toLowerCase().includes(ql))
+        .map(w => ({ html: `${wsLogo(w, 20)}`, name: w.name, sub: w.plan, run: () => A.switchWs({ dataset: { v: w.id } }) })),
     });
     return groups;
   }

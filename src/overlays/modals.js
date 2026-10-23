@@ -215,7 +215,7 @@ export function shareModal(m, H) {
 }
 export function inviteModal(m, H) {
   const err = S.ui.errors.invite;
-  return `${H('Invite to ' + esc(D().ws.name), 'Invited people get an email with a link to join.')}
+  return `${H('Invite to ' + esc(D().ws.name), 'They get access as soon as they sign in with Google using this email. No email is sent, so share the link with them.')}
   <form class="modal-b" data-submit="submitInvite">
     <div class="field"><label class="label" for="inv-emails">Email addresses</label><textarea class="textarea ${err ? 'is-error' : ''}" id="inv-emails" placeholder="name@company.com, another@company.com" rows="3" autofocus>${esc(S.ui.inviteDraft || '')}</textarea>${err ? `<span class="err">${ic('circle-alert', 12)}${err}</span>` : '<span class="hint">Separate multiple addresses with commas.</span>'}</div>
     <div class="row" style="gap:12px"><div class="field grow"><label class="label" for="inv-role">Role</label><select class="select" id="inv-role">${['Member', 'Admin', 'Guest'].map(r => `<option>${r}</option>`).join('')}</select></div>

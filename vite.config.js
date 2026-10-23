@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { cloudflare } from '@cloudflare/vite-plugin';
 import fs from 'node:fs';
 import path from 'node:path';
 import { icons as lucide } from 'lucide';
@@ -48,6 +49,6 @@ function lucideSubset() {
 }
 
 export default defineConfig({
-  plugins: [lucideSubset()],
+  plugins: [lucideSubset(), cloudflare()],
   server: { port: 5173 },
 });

@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist/'] },
+  { ignores: ['dist/', '.wrangler/'] },
   js.configs.recommended,
   {
     files: ['**/*.js'],
@@ -11,5 +11,9 @@ export default [
   {
     files: ['vite.config.js', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    files: ['worker/**/*.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
   },
 ];
