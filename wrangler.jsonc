@@ -5,6 +5,8 @@
   "compatibility_date": "2026-10-01",
   // Serves the app at studio.higherdetail.com (DNS record and certificate are created on deploy).
   "routes": [{ "pattern": "studio.higherdetail.com", "custom_domain": true }],
+  // Keep the gr8r-studio.<subdomain>.workers.dev address working too.
+  "workers_dev": true,
   "observability": {
     "enabled": true,
   },
