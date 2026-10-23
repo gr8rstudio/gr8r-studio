@@ -1,9 +1,9 @@
 /* =====================================================================
    SETTINGS · AUTH · ONBOARDING · DESIGN SYSTEM · SYSTEM STATES
    ===================================================================== */
-import { dOff, esc, fmtDate } from '../core/utils.js';
+import { dOff, deviceTimeZone, esc, fmtDate } from '../core/utils.js';
 import { ic, wsLogo } from '../core/icons.js';
-import { D, S, me } from '../core/store.js';
+import { D, S, me, notifPrefs } from '../core/store.js';
 import { av, pIcon } from '../ui/helpers.js';
 import { permsTable, teamsGrid } from './members.js';
 import { page404 } from './errors.js';
@@ -85,7 +85,7 @@ export function pageSettings() {
 export function settingsBody(sec, title) {
   const P = S.prefs;
   const d = D();
-  const np = d.notifPrefs;
+  const np = notifPrefs(d.me);
   const H = lead => `<h1>${title}</h1><p class="lead">${lead}</p>`;
   switch (sec) {
     case 'workspace':
@@ -153,11 +153,7 @@ export function settingsBody(sec, title) {
     case 'language':
       return (
         H('Language and regional formats.') +
-        srow(
-          'Language',
-          'The language used throughout the interface.',
-          sel('lang', ['English (US)', 'English (UK)', 'Deutsch', 'Español', 'Français', '日本語'], P.lang),
-        ) +
+        srow('Language', 'The language used throughout the interface.', sel('lang', ['English (US)', 'English (UK)'], P.lang)) +
         srow('Spellcheck', 'Check spelling in descriptions and comments.', tog('spell', P.spell !== false))
       );
     case 'datetime':
@@ -165,8 +161,33 @@ export function settingsBody(sec, title) {
         H('How dates and times appear across the workspace.') +
         srow(
           'Time zone',
-          'Used for due dates and reminders.',
-          sel('tz', ['(GMT-08:00) Pacific Time', '(GMT-05:00) Eastern Time', '(GMT+00:00) London', '(GMT+01:00) Berlin', '(GMT+08:00) Singapore'], P.tz),
+          'Decides when "today" starts for due dates, reminders, and the calendar.',
+          sel(
+            'tz',
+            [
+              ['auto', `This device (${deviceTimeZone().replace(/_/g, ' ')})`],
+              ...[
+                'Australia/Melbourne',
+                'Australia/Sydney',
+                'Australia/Brisbane',
+                'Australia/Adelaide',
+                'Australia/Perth',
+                'Pacific/Auckland',
+                'Asia/Tokyo',
+                'Asia/Singapore',
+                'Asia/Kolkata',
+                'Asia/Dubai',
+                'Europe/Athens',
+                'Europe/Berlin',
+                'Europe/London',
+                'America/New_York',
+                'America/Chicago',
+                'America/Denver',
+                'America/Los_Angeles',
+              ].map(z => [z, z.split('/')[1].replace(/_/g, ' ')]),
+            ],
+            P.tz,
+          ),
         ) +
         srow(
           'Date format',

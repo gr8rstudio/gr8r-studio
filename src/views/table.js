@@ -1,5 +1,5 @@
 /* ---------- TABLE ---------- */
-import { esc, fmtDate, iso } from '../core/utils.js';
+import { esc, fmtDate, iso, zoned } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { S, isOver, mem, pColor, proj, task } from '../core/store.js';
 import { av, dueHtml, empty, lbl, prPill, stIcon, stPill } from '../ui/helpers.js';
@@ -44,7 +44,7 @@ export function tcell(t, c) {
         ? `<td class="editing"><input id="edit-cell" data-blur="commitCell" data-key-enter="commitCell" data-id="${t.id}" data-f="estimate" value="${esc(t.estimate || '')}" placeholder="e.g. 2d" aria-label="Estimate"></td>`
         : `<td class="cellbtn num" data-dbl="editCell" data-id="${t.id}" data-f="estimate" data-a="editCell" title="Click to edit">${t.estimate ? esc(t.estimate) : '<span class="faint">—</span>'}</td>`;
     case 'created':
-      return `<td class="num muted">${fmtDate(iso(new Date(t.created)))}</td>`;
+      return `<td class="num muted">${fmtDate(iso(zoned(t.created)))}</td>`;
     case 'project':
       return `<td class="cellbtn" data-a="pop" data-pop="project" data-id="${t.id}"><span class="row" style="gap:6px"><span class="pdot" style="--c:${pColor(proj(t.project))}"></span><span class="trunc">${esc(proj(t.project).name)}</span></span></td>`;
   }

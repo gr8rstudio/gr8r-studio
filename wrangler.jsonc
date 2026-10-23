@@ -20,8 +20,10 @@
     },
   ],
   "vars": {
-    // Optional: comma list of emails and @domains allowed to sign in, e.g. "@higherdetail.com". Empty = any Google account.
-    "ALLOWED_EMAILS": "",
+    // Accounts that can always sign in and create workspaces: comma list of emails and @domains.
+    "ALLOWED_EMAILS": "slefkaditis@gmail.com",
+    // "true": everyone else needs an invite (or to already be in a workspace) to sign in.
+    "INVITE_ONLY": "true",
   },
   // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are secrets: `.dev.vars` locally, `wrangler secret put` in production.
 }

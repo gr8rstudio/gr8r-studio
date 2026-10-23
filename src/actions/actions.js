@@ -7,6 +7,10 @@ import {
   D,
   S,
   canManage,
+  mentioned,
+  myNotifs,
+  notify,
+  watchers,
   hydrate,
   memberState,
   newWorkspace,
@@ -43,7 +47,7 @@ export function nextKey(p) {
   p.seq = (p.seq || 200) + 1;
   return p.key + '-' + p.seq;
 }
-export function createTask(f) {
+export function createTask(f, { quiet = false } = {}) {
   const p = proj(f.project) || visibleProjects().find(canSee);
   const maxO = Math.max(0, ...D().tasks.map(t => t.order));
   const t = Object.assign(
@@ -62,6 +66,7 @@ export function createTask(f) {
       desc: '',
       estimate: null,
       created: Date.now(),
+      createdBy: D().me,
       updated: Date.now(),
       order: maxO + 1,
       fav: false,
@@ -75,8 +80,10 @@ export function createTask(f) {
   D().tasks.push(t);
   fxSet({ added: t.id });
   logAct('created', t);
+  if (t.assignee && !quiet) notify(t.assignee, 'assign', t, 'assigned you', dueSnippet(t), 'assign');
   return t;
 }
+const dueSnippet = t => (t.due ? `Due ${fmtDate(t.due)}` : 'No due date');
 export const RECUR_DAYS = { Daily: 1, Weekly: 7, 'Every 2 weeks': 14, Monthly: 30 };
 export function applyPatch(t, patch) {
   const msgs = [];
@@ -92,26 +99,36 @@ export function applyPatch(t, patch) {
         logAct('completed', t);
         fxSet({ done: t.id });
       } else logAct('moved', t, `from ${ST[old].name} to ${ST[nv].name}`);
+      watchers(t).forEach(id =>
+        notify(id, 'update', t, nv === 'done' ? 'completed' : `moved to ${ST[nv].name}`, `${ST[old]?.name || old} → ${ST[nv].name}`, 'status'),
+      );
       if (nv === 'done' && t.recur && t.due) {
         const nd = iso(addD(parse(t.due), RECUR_DAYS[t.recur] || 7));
-        const n = createTask({
-          ...JSON.parse(JSON.stringify(t)),
-          id: undefined,
-          key: undefined,
-          status: 'todo',
-          due: nd,
-          start: nd,
-          subtasks: t.subtasks.map(s => ({ ...s, done: false })),
-          completedAt: null,
-          attachments: [],
-        });
+        const n = createTask(
+          {
+            ...JSON.parse(JSON.stringify(t)),
+            id: undefined,
+            key: undefined,
+            status: 'todo',
+            due: nd,
+            start: nd,
+            subtasks: t.subtasks.map(s => ({ ...s, done: false })),
+            completedAt: null,
+            attachments: [],
+          },
+          { quiet: true },
+        );
         delete n.prevStatus;
         msgs.push(`Next “${t.title}” scheduled for ${fmtDate(nd)}`);
       }
-    } else if (k === 'assignee') logAct('assigned', t, nv ? `to ${mem(nv)?.name}` : '(unassigned)');
-    else if (k === 'priority') logAct('changed priority of', t, `to ${PR[nv].name}`);
-    else if (k === 'due') logAct('changed due date of', t, nv ? `to ${fmtDate(nv)}` : '(cleared)');
-    else if (k === 'start') logAct('changed start date of', t, nv ? `to ${fmtDate(nv)}` : '(cleared)');
+    } else if (k === 'assignee') {
+      logAct('assigned', t, nv ? `to ${mem(nv)?.name}` : '(unassigned)');
+      if (nv) notify(nv, 'assign', t, 'assigned you', dueSnippet(t), 'assign');
+    } else if (k === 'priority') logAct('changed priority of', t, `to ${PR[nv].name}`);
+    else if (k === 'due') {
+      logAct('changed due date of', t, nv ? `to ${fmtDate(nv)}` : '(cleared)');
+      if (t.assignee) notify(t.assignee, 'update', t, 'changed the due date of', nv ? `Now due ${fmtDate(nv)}` : 'Due date removed', 'status');
+    } else if (k === 'start') logAct('changed start date of', t, nv ? `to ${fmtDate(nv)}` : '(cleared)');
     else if (k === 'project') {
       const p = proj(nv);
       t.key = nextKey(p);
@@ -306,6 +323,7 @@ A.popPick = el => {
         t,
         k === 'assignee' ? (v ? `to ${mem(v).name}` : '(unassigned)') : v ? fmtDate(v) : '(cleared)',
       );
+      if (k === 'assignee' && v) notify(v, 'assign', t, 'assigned you a subtask on', sb.title || sb.text || '', 'assign');
     });
     return;
   }
@@ -909,8 +927,13 @@ A.postComment = el => {
   const t = task(id);
   if (
     mutate(() => {
+      const followers = watchers(t);
       D().comments.push({ id: uid('c'), task: id, by: D().me, at: Date.now(), text: txt, re: {} });
       logAct('commented on', t);
+      // People named in the comment get a mention; everyone else following the task gets a comment.
+      const named = mentioned(txt);
+      named.forEach((why, mid) => notify(mid, 'mention', t, 'mentioned you in', txt, why));
+      followers.filter(mid => !named.has(mid)).forEach(mid => notify(mid, 'comment', t, 'commented on', txt));
       S.ui.drafts[id] = '';
       S.ui.mention = null;
       S.ui.drawerTab = 'comments';
@@ -1702,8 +1725,8 @@ A.toggleRead = el => {
   render();
 };
 A.markAllRead = () => {
-  const n = D().notifs.filter(x => !x.read).length;
-  D().notifs.forEach(x => (x.read = true));
+  const n = myNotifs().filter(x => !x.read).length;
+  myNotifs().forEach(x => (x.read = true));
   save();
   render();
   if (n) toast("You're all caught up.");
@@ -1819,19 +1842,6 @@ A.shortcuts = () => {
   S.ui.palette = null;
   openModal({ type: 'shortcuts' });
 };
-A.startOnboarding = () => {
-  S.ui.pop = null;
-  S.ui.onbNew = false;
-  S.ui.auth = 'onboarding';
-  S.ui.onb = 0;
-  render();
-};
-A.toggleOffline = () => {
-  S.ui.offline = !S.ui.offline;
-  S.ui.pop = null;
-  render();
-  toast(S.ui.offline ? 'Offline mode on — edits will fail to save' : 'Back online', { kind: S.ui.offline ? 'err' : 'ok' });
-};
 A.retryOnline = el => {
   el.classList.add('is-loading');
   setTimeout(() => {
@@ -1841,29 +1851,6 @@ A.retryOnline = el => {
   }, 700);
 };
 A.toastInfo = el => toast(el.dataset.msg, { kind: 'info' });
-A.demoToast = el => {
-  const v = el.dataset.v;
-  if (v === 'err') toast("Your changes couldn't be saved.", { kind: 'err', action: 'Try again', onAction: () => toast('Saved') });
-  else if (v === 'retry') {
-    toast('Retrying…', { kind: 'info', ms: 1200 });
-    setTimeout(() => toast('Loaded successfully'), 1300);
-  } else toast('Moved “Create homepage wireframes” to Review', { action: 'Undo', onAction: () => toast('Undone', { kind: 'info' }) });
-};
-A.demoConfirm = () =>
-  confirmDlg({
-    title: 'Archive Marketing Website?',
-    body: 'The project will be hidden from the sidebar. You can restore it any time.',
-    ok: 'Archive project',
-    icon: 'archive',
-    run: () => toast('This was a preview — nothing was archived', { kind: 'info' }),
-  });
-A.demoLoad = el => {
-  el.classList.add('is-loading');
-  setTimeout(() => {
-    el.classList.remove('is-loading');
-    toast('Loaded');
-  }, 1400);
-};
 A.reloadPage = () => {
   S.ui.loading = true;
   render();
@@ -1907,7 +1894,8 @@ IN.prefToggle = el => {
   save();
 };
 IN.npToggle = el => {
-  D().notifPrefs[el.dataset.k] = el.checked;
+  const m = me();
+  m.notifPrefs = { ...m.notifPrefs, [el.dataset.k]: el.checked };
   save();
   toast('Notification preferences saved', { ms: 1500 });
 };
@@ -2249,8 +2237,9 @@ A.onbFinish = async el => {
     try {
       await flush();
       openWs(await createWorkspace(newWorkspace(o.ws.trim() || 'My Workspace'), memberState()));
-    } catch {
+    } catch (e) {
       el?.classList.remove('is-loading');
+      if (e.code === 'invite_only') return toast('Only the accounts that run this Gr8r Studio can create workspaces.', { kind: 'err' });
       return toast("Couldn't create the workspace. Try again.", { kind: 'err' });
     }
     S.ui.onbNew = false;

@@ -1,7 +1,7 @@
 /* ---------- INBOX ---------- */
 import { MOD, ago, esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
-import { D, S, commentsOf, mem, pColor, proj, task } from '../core/store.js';
+import { S, commentsOf, mem, myNotifs, pColor, proj, task } from '../core/store.js';
 import { av, empty, fmtComment } from '../ui/helpers.js';
 import { cellAssignee, cellDue, cellPrio, cellStatus } from '../components/task-list.js';
 import { commentHtml } from '../overlays/drawer.js';
@@ -15,13 +15,13 @@ export function pageInbox() {
     ['update', 'Updates'],
   ];
   const cat = S.ui.inboxCat;
-  let ns = D()
-    .notifs.slice()
+  let ns = myNotifs()
+    .slice()
     .sort((a, b) => b.at - a.at);
   const count = k => ns.filter(n => (k === 'all' || n.type === k) && !n.read).length;
   ns = ns.filter(n => cat === 'all' || n.type === cat);
   if (S.ui.inboxUnread) ns = ns.filter(n => !n.read);
-  const sel = D().notifs.find(n => n.id === S.ui.inboxSel) || null;
+  const sel = myNotifs().find(n => n.id === S.ui.inboxSel) || null;
   return `<div class="page flush">
     <div style="display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);flex:1;min-height:0" class="inbox-grid">
       <style>@media(max-width:900px){.inbox-grid{grid-template-columns:minmax(0,1fr)!important}.inbox-prev{display:${sel ? 'flex' : 'none'}!important;position:fixed;inset:0;z-index:48;background:var(--surface)}}</style>

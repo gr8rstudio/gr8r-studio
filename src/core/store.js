@@ -1,5 +1,5 @@
 /* ---------- store ---------- */
-import { TODAY, diffD, iso, parse, uid } from './utils.js';
+import { TODAY, diffD, fmtDate, iso, parse, uid } from './utils.js';
 import { PCOLORS, TEAMS_SEED } from './constants.js';
 import { emptyWorkspace } from '../data/workspace.js';
 import { queueSave, session } from './sync.js';
@@ -12,7 +12,7 @@ export const DEFAULT_PREFS = {
   weekStart: 1,
   dateFmt: 'MMM d',
   lang: 'English (US)',
-  tz: '(GMT-07:00) Pacific Time',
+  tz: 'auto',
   motion: 'system',
   home: 'home',
   openTasks: 'drawer',
@@ -166,6 +166,78 @@ export function taskProg(t) {
 export function logAct(verb, t, extra = '') {
   D().activity.unshift({ id: uid('a'), by: D().me, verb, task: t?.id || null, project: t?.project || null, at: Date.now(), extra });
   if (t) t.updated = Date.now();
+}
+
+/* ---------- notifications ----------
+   Notifications live in the shared workspace document, each addressed to one member (`to`); every
+   browser shows only its own. They're created by whoever makes the change. */
+const NOTIF_KEEP = 150,
+  NOTIF_DAYS = 60;
+export const myNotifs = () => D().notifs.filter(n => n.to === D().me);
+/* Each person's notification settings are stored on their member record. */
+export const notifPrefs = id => ({ ...D().notifPrefs, ...(mem(id)?.notifPrefs || {}) });
+const PREF = { mention: 'mention_all', team: 'mention_team', assign: 'assign_self', status: 'assign_status', due: 'assign_over' };
+const wants = (id, pref) => !pref || notifPrefs(id)[PREF[pref]] !== false;
+function pruneNotifs() {
+  const d = D(),
+    cutoff = Date.now() - NOTIF_DAYS * 864e5,
+    count = {};
+  d.notifs = d.notifs.filter(n => n.at > cutoff && mem(n.to) && (count[n.to] = (count[n.to] || 0) + 1) <= NOTIF_KEEP);
+}
+/* Tell member `to` about task `t`. Nobody is notified about their own change. */
+export function notify(to, type, t, text, snippet = '', pref) {
+  const d = D();
+  const m = mem(to);
+  if (!m || to === d.me || m.demo || !wants(to, pref)) return;
+  d.notifs.unshift({ id: uid('n'), to, type, by: d.me, task: t?.id || null, project: t?.project || null, text, snippet, at: Date.now(), read: false });
+  pruneNotifs();
+}
+/* The people who follow a task: its assignee, its creator, and everyone who commented on it. */
+export function watchers(t) {
+  return [...new Set([t.assignee, t.createdBy, ...commentsOf(t.id).map(c => c.by)])].filter(Boolean);
+}
+/* Members named in a comment: "@Full Name", or "@Team" for everyone on that team. */
+export function mentioned(text) {
+  const d = D(),
+    out = new Map();
+  d.members.forEach(m => {
+    if (m.name && text.includes('@' + m.name)) out.set(m.id, 'mention');
+  });
+  teamsList().forEach(tm => {
+    if (tm.name && text.includes('@' + tm.name)) d.members.filter(m => m.team === tm.id && !out.has(m.id)).forEach(m => out.set(m.id, 'team'));
+  });
+  return out;
+}
+/* Reminders for my own open tasks that are due today, tomorrow, or overdue. Created by my browser, once per task and due date. */
+export function dueReminders() {
+  const d = D();
+  if (!d.me || !wants(d.me, 'due')) return false;
+  let added = false;
+  d.tasks.forEach(t => {
+    if (t.assignee !== d.me || t.status === 'done' || t.archived || !t.due) return;
+    const days = diffD(parse(t.due), TODAY);
+    const kind = days < 0 ? 'overdue' : days === 0 ? 'today' : days === 1 ? 'tomorrow' : null;
+    if (!kind) return;
+    const key = `due:${t.id}:${t.due}:${kind}`;
+    if (d.notifs.some(n => n.key === key)) return;
+    const text = { overdue: 'is overdue', today: 'is due today', tomorrow: 'is due tomorrow' }[kind];
+    d.notifs.unshift({
+      id: uid('n'),
+      key,
+      to: d.me,
+      type: 'update',
+      by: null,
+      task: t.id,
+      project: t.project,
+      text,
+      snippet: `Due ${fmtDate(t.due)}`,
+      at: Date.now(),
+      read: false,
+    });
+    added = true;
+  });
+  if (added) pruneNotifs();
+  return added;
 }
 
 /* ---------- teams (workspace data, seeded on first use) ---------- */

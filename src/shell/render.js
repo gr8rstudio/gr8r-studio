@@ -30,8 +30,6 @@ export const ROUTE_NAMES = {
   team: 'Team',
   activity: 'Activity',
   settings: 'Settings',
-  system: 'Design system',
-  states: 'System states',
   archive: 'Archive',
 };
 export const ROUTE_ICONS = {
@@ -50,8 +48,6 @@ export const ROUTE_ICONS = {
   activity: 'activity',
   teams: 'users',
   settings: 'settings',
-  system: 'component',
-  states: 'layers',
   archive: 'archive',
 };
 

@@ -20,6 +20,7 @@ async function api(path, opts = {}) {
 export async function fetchMe() {
   const r = await api('/me');
   if (r.status === 401) return null;
+  if (r.status === 403) throw Object.assign(new Error('not allowed'), { code: 'not_allowed' });
   if (!r.ok) throw new Error('me ' + r.status);
   return (session.user = r.body.user);
 }
@@ -38,7 +39,7 @@ export async function fetchWorkspace(id) {
 }
 export async function createWorkspace(data, state) {
   const r = await api('/workspaces', { method: 'POST', body: JSON.stringify({ data, state }) });
-  if (!r.ok) throw new Error('create ' + r.status);
+  if (!r.ok) throw Object.assign(new Error('create ' + r.status), { code: r.body.error });
   const ws = r.body.workspace;
   session.list.unshift({ id: ws.id, name: data.ws?.name || 'Workspace', role: 'owner' });
   return ws;
@@ -117,7 +118,7 @@ export async function flush({ keepalive = false } = {}) {
       timer = setTimeout(flush, 50);
     } else if (r.status === 401) {
       hooks.error('signed_out');
-    } else if (r.status === 404) {
+    } else if (r.status === 404 || r.status === 403) {
       hooks.removed();
     } else {
       // Network or server error: keep the newest snapshot queued and retry with backoff.
@@ -139,7 +140,7 @@ export async function poll() {
   polling = true;
   try {
     const v = await api(`/workspaces/${ws.id}/version`);
-    if (v.status === 404) return hooks.removed();
+    if (v.status === 404 || v.status === 403) return hooks.removed();
     if (!v.ok || v.body.version <= ws.version || !hooks.canApply()) return;
     const full = await fetchWorkspace(ws.id);
     if (!full) return hooks.removed();

@@ -1,5 +1,5 @@
 /* ---------- HOME ---------- */
-import { DAY, MONL, TODAY, WDL, diffD, esc, fmtDate, parse } from '../core/utils.js';
+import { DAY, MONL, TODAY, WDL, diffD, esc, fmtDate, parse, zoned } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { D, S, allTasks, canSee, isOver, pColor, progressOf, proj, visibleProjects } from '../core/store.js';
 import { av, avStack, empty, pIcon, pStatus, prIcon, progBar } from '../ui/helpers.js';
@@ -7,7 +7,7 @@ import { sortTasks } from '../shell/view-engine.js';
 import { actHtml, miniRow } from '../components/task-list.js';
 
 export function pageHome() {
-  const h = new Date().getHours();
+  const h = zoned().getHours();
   const greet = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   const all = allTasks();
   const mineAll = all.filter(t => t.assignee === D().me);

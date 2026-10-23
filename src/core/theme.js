@@ -1,11 +1,15 @@
 /* ---------- theme ---------- */
-import { setDateFormat } from './utils.js';
+import { setDateFormat, setTimeZone } from './utils.js';
 import { S } from './store.js';
 
 export function applyPrefs() {
   const r = document.documentElement,
     p = S.prefs;
-  setDateFormat(p.dateFmt);
+  setDateFormat(p.dateFmt, p.timeFmt);
+  setTimeZone(p.tz);
+  // Language sets the spellcheck dictionary; the interface itself is English only.
+  r.lang = { 'English (UK)': 'en-GB' }[p.lang] || 'en-US';
+  r.spellcheck = p.spell !== false;
   if (p.theme === 'system') r.removeAttribute('data-theme');
   else r.setAttribute('data-theme', p.theme);
   if (p.accent === 'indigo') r.removeAttribute('data-accent');

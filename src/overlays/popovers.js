@@ -1,5 +1,5 @@
 /* ---------------- POPOVERS ---------------- */
-import { $, MOD, MONL, TODAY, WD, addD, dOff, diffD, esc, fmtDate, iso, parse } from '../core/utils.js';
+import { $, MOD, MONL, TODAY, WD, addD, dOff, diffD, esc, fmtDate, fmtTime, iso, parse } from '../core/utils.js';
 import { ic, wsLogo } from '../core/icons.js';
 import { LABELS, PRIOS, PSTAT, STATUSES } from '../core/constants.js';
 import { D, S, allTasks, canSee, currentWsId, me, mem, pColor, proj, task, visibleProjects, workspaceList } from '../core/store.js';
@@ -242,8 +242,7 @@ export function popHtml(p) {
       style = 'width:260px';
       break;
     case 'help':
-      inner = `<div class="mh">Help & resources</div><button class="mi" data-a="shortcuts">${ic('keyboard', 15)}Keyboard shortcuts<span class="r"><kbd>?</kbd></span></button><button class="mi" data-a="openPalette">${ic('command', 15)}Command menu<span class="r"><kbd>${MOD}K</kbd></span></button><button class="mi" data-a="go" data-r="system">${ic('component', 15)}Design system</button><button class="mi" data-a="go" data-r="states">${ic('layers', 15)}System states</button>
-      <div class="msep"></div><div class="mh">Prototype</div><button class="mi" data-a="startOnboarding">${ic('sparkles', 15)}Replay onboarding</button><button class="mi" data-a="toggleOffline">${ic(S.ui.offline ? 'wifi' : 'wifi-off', 15)}${S.ui.offline ? 'Go back online' : 'Simulate offline'}</button><button class="mi" data-a="go" data-r="nowhere">${ic('file-question', 15)}Open a broken link</button>`;
+      inner = `<div class="mh">Help & resources</div><button class="mi" data-a="shortcuts">${ic('keyboard', 15)}Keyboard shortcuts<span class="r"><kbd>?</kbd></span></button><button class="mi" data-a="openPalette">${ic('command', 15)}Command menu<span class="r"><kbd>${MOD}K</kbd></span></button>`;
       style = 'width:260px';
       break;
     case 'sort': {
@@ -331,7 +330,7 @@ export function popHtml(p) {
         evs
           .map(
             e =>
-              `<button class="mi" data-a="go" data-r="project" data-id="${e.project}" data-tab="calendar">${ic('clock', 14)}${esc(e.title)}<span class="r">${e.time}</span></button>`,
+              `<button class="mi" data-a="go" data-r="project" data-id="${e.project}" data-tab="calendar">${ic('clock', 14)}${esc(e.title)}<span class="r">${fmtTime(e.time)}</span></button>`,
           )
           .join('') +
         ts
@@ -346,7 +345,7 @@ export function popHtml(p) {
     case 'event': {
       const e = D().events.find(x => x.id === p.id);
       const pr = proj(e.project);
-      inner = `<div style="padding:10px 10px 6px"><div class="row" style="gap:8px;margin-bottom:6px"><span class="pdot" style="--c:${pColor(pr)};border-radius:50%"></span><b style="font-size:14px;font-weight:600">${esc(e.title)}</b></div><div class="muted" style="font-size:12.5px;display:flex;flex-direction:column;gap:4px"><span class="row" style="gap:6px">${ic('calendar', 13)}${fmtDate(e.date, true)} · ${e.time}</span><span class="row" style="gap:6px">${ic('folder', 13)}${esc(pr.name)}</span><span class="row" style="gap:6px">${ic('users', 13)}${avStack(pr.members, 5)}</span></div></div><div class="msep"></div><button class="mi" data-a="go" data-r="project" data-id="${pr.id}" data-tab="overview">${ic('arrow-up-right', 14)}Open project</button>`;
+      inner = `<div style="padding:10px 10px 6px"><div class="row" style="gap:8px;margin-bottom:6px"><span class="pdot" style="--c:${pColor(pr)};border-radius:50%"></span><b style="font-size:14px;font-weight:600">${esc(e.title)}</b></div><div class="muted" style="font-size:12.5px;display:flex;flex-direction:column;gap:4px"><span class="row" style="gap:6px">${ic('calendar', 13)}${fmtDate(e.date, true)} · ${fmtTime(e.time)}</span><span class="row" style="gap:6px">${ic('folder', 13)}${esc(pr.name)}</span><span class="row" style="gap:6px">${ic('users', 13)}${avStack(pr.members, 5)}</span></div></div><div class="msep"></div><button class="mi" data-a="go" data-r="project" data-id="${pr.id}" data-tab="overview">${ic('arrow-up-right', 14)}Open project</button>`;
       style = 'width:270px';
       break;
     }

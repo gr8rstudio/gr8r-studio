@@ -43,7 +43,6 @@ import './overlays/context-menu.js';
 import './overlays/palette.js';
 import './pages/settings.js';
 import './pages/auth.js';
-import './pages/design-system.js';
 import './actions/actions.js';
 import './actions/events.js';
 import './actions/keyboard.js';
@@ -54,7 +53,7 @@ import './features/archive.js';
 import './actions/teams.js';
 import './actions/subtasks.js';
 import './actions/archive.js';
-import { S, D, adoptMe, hydrate, newWorkspace } from './core/store.js';
+import { S, D, adoptMe, dueReminders, hydrate, newWorkspace, save } from './core/store.js';
 import { attach, createWorkspace, fetchMe, fetchWorkspace, fetchWorkspaces, onSync } from './core/sync.js';
 import { A } from './actions/actions.js';
 import { ROUTE_NAMES, render, go } from './shell/render.js';
@@ -62,7 +61,8 @@ import { toast } from './ui/toast.js';
 
 const AUTH_ERRORS = {
   cancelled: 'Google sign-in was cancelled.',
-  not_allowed: "That Google account isn't allowed to sign in to this workspace.",
+  not_allowed: 'Gr8r Studio is invite-only. Ask a workspace owner to invite this Google account, then try again.',
+  invite_only: "You're not in any workspace. Ask a workspace owner to invite you, then try again.",
   unverified: 'Your Google account email is not verified.',
   not_configured: 'Google sign-in is not configured on the server yet.',
   offline: "Couldn't reach the server. Check your connection and try again.",
@@ -105,6 +105,7 @@ onSync({
   remote: data => {
     S.data = data;
     adoptMe();
+    if (dueReminders()) save();
     if (S.ui.drawer && !D().tasks.some(t => t.id === S.ui.drawer)) S.ui.drawer = null;
     render();
   },
@@ -152,7 +153,7 @@ onSync({
   } catch (e) {
     console.error(e);
     user = null;
-    err = 'offline';
+    err = AUTH_ERRORS[e.code] ? e.code : 'offline';
   }
   if (!user) {
     S.ui.auth = 'login';
@@ -166,6 +167,7 @@ onSync({
     S.ui.onb = 0;
   } else if (h && ROUTE_NAMES[h]) S.ui.route = h;
   else S.ui.route = S.prefs.home || 'home';
+  if (dueReminders()) save();
   render();
   if (opened.joined) toast(`You've joined ${D().ws.name}`);
 })();

@@ -20,7 +20,22 @@ export const sod = d => {
   x.setHours(0, 0, 0, 0);
   return x;
 };
-export const TODAY = sod(new Date());
+/* Time zone from preferences ('auto' = this device's). "Today", day grouping and the greeting follow it. */
+export let timeZone = null;
+export function zoned(ts = Date.now()) {
+  return timeZone ? new Date(new Date(ts).toLocaleString('en-US', { timeZone })) : new Date(ts);
+}
+export let TODAY = sod(new Date());
+export function setTimeZone(tz) {
+  try {
+    timeZone = tz && tz !== 'auto' ? Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone : null;
+  } catch {
+    timeZone = null; // not a valid IANA zone (e.g. a value saved by an older version)
+  }
+  const t = sod(zoned());
+  if (+t !== +TODAY) TODAY = t;
+}
+export const deviceTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 export const iso = d => {
   const x = new Date(d);
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
@@ -43,8 +58,17 @@ export const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const WDL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 /* Set from preferences on every render (core/theme.js), so utils never depends on the store. */
 export let dateFormat = 'MMM d';
-export function setDateFormat(f) {
+export let timeFormat = '12';
+export function setDateFormat(f, t) {
   dateFormat = f || 'MMM d';
+  timeFormat = t === '24' ? '24' : '12';
+}
+/* "14:30" → "2:30 PM" or "14:30", per the time format preference. */
+export function fmtTime(hhmm) {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  if (timeFormat === '24') return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 export function fmtDate(s, long) {
   const d = typeof s === 'string' ? parse(s) : s;
@@ -72,11 +96,11 @@ export function ago(ts) {
   if (h < 24) return h + 'h ago';
   const d = Math.round(h / 24);
   if (d < 7) return d + 'd ago';
-  return fmtDate(iso(new Date(ts)));
+  return fmtDate(iso(zoned(ts)));
 }
 export const minsAgo = m => Date.now() - m * 6e4;
 export function dayBucket(ts) {
-  const n = diffD(new Date(ts), TODAY);
+  const n = diffD(zoned(ts), TODAY);
   if (n === 0) return 'Today';
   if (n === -1) return 'Yesterday';
   if (n > -7) return 'This week';

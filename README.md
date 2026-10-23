@@ -45,8 +45,13 @@ In [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
    - `https://<your-worker>.<your-subdomain>.workers.dev/api/auth/callback` and any custom domain,
      each ending in `/api/auth/callback`
 
-To limit who can sign in, set `ALLOWED_EMAILS` in `wrangler.jsonc` to a comma list of addresses
-and `@domains` (for example `@higherdetail.com`). Empty lets any Google account in.
+Who can sign in is set in `wrangler.jsonc`:
+
+- `ALLOWED_EMAILS`: comma list of addresses and `@domains` (for example `@higherdetail.com`) that
+  can always sign in and create workspaces.
+- `INVITE_ONLY`: when `"true"`, everyone else needs an invite to a workspace (or to already be in
+  one). Someone removed from every workspace is signed out on their next request. When `"false"`
+  and `ALLOWED_EMAILS` is empty, any Google account can sign in.
 
 ## Deploy to Cloudflare
 
@@ -80,6 +85,23 @@ After that, `npm run deploy` ships each change. Add a migration file in `migrati
   same field, the later save wins. Open workspaces check for other people's changes every 10
   seconds while the tab is visible.
 - Sessions are 30-day HttpOnly cookies. Only a SHA-256 hash of the token is stored.
+
+## Notifications
+
+Notifications are created by whoever makes the change and stored in the workspace document,
+each addressed to one member; every person sees only their own in Inbox and Notifications, with
+their own read state.
+
+- **Assigned:** a task or subtask is assigned to you.
+- **Mentions:** a comment names you (`@Full Name`) or your team (`@Team`).
+- **Comments:** someone comments on a task you're assigned, created, or commented on.
+- **Updates:** a task you follow changes status or is completed, or your task's due date changes.
+- **Reminders:** your own open tasks that are due tomorrow, due today, or overdue (made by your
+  browser, once per task and due date).
+
+Each person can turn these off under **Settings → Notifications** (Mentions and Task
+assignments). The Email and Push settings don't send anything yet. Each person keeps their newest
+150 notifications from the last 60 days.
 
 ## Sharing a workspace
 

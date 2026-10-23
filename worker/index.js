@@ -22,6 +22,8 @@ export default {
 
       const user = await currentUser(request, env);
       if (!user) return json({ error: 'unauthenticated' }, 401);
+      // Re-check on every request so someone removed from every workspace can't keep using an old session.
+      if (!(await mayEnter(user.email, env))) return json({ error: 'not_allowed' }, 403);
       if (route === 'GET /api/me') return json({ user: publicUser(user) });
       if (route === 'GET /api/workspaces') return listWorkspaces(user, env);
       if (route === 'POST /api/workspaces') return createWorkspace(request, user, env);
@@ -74,15 +76,32 @@ async function readJson(request) {
 }
 const publicUser = u => ({ id: u.id, email: u.email, name: u.name, picture: u.picture });
 
-/* ALLOWED_EMAILS is an optional comma list of addresses and @domains. Empty lets any Google account in. */
-function allowed(email, env) {
-  const list = (env.ALLOWED_EMAILS || '')
+/* Who may sign in:
+   - ALLOWED_EMAILS (comma list of addresses and @domains) always may. These people can also
+     create workspaces when INVITE_ONLY is on, so put the account(s) that run things here.
+   - Anyone invited to a workspace, or already a member of one, may.
+   - Everyone else only when INVITE_ONLY is off and ALLOWED_EMAILS is empty. */
+const inviteOnly = env => env.INVITE_ONLY === 'true';
+function listed(email, env) {
+  const e = email.toLowerCase();
+  return (env.ALLOWED_EMAILS || '')
     .split(',')
     .map(s => s.trim().toLowerCase())
-    .filter(Boolean);
-  if (!list.length) return true;
+    .filter(Boolean)
+    .some(x => (x.startsWith('@') ? e.endsWith(x) : e === x));
+}
+async function belongs(email, env) {
   const e = email.toLowerCase();
-  return list.some(x => (x.startsWith('@') ? e.endsWith(x) : e === x));
+  const row = await env.DB.prepare(
+    'SELECT 1 FROM invites WHERE email = ?1 UNION SELECT 1 FROM workspace_members m JOIN users u ON u.id = m.user_id WHERE u.email = ?1 LIMIT 1',
+  )
+    .bind(e)
+    .first();
+  return !!row;
+}
+async function mayEnter(email, env) {
+  if (listed(email, env) || (await belongs(email, env))) return true;
+  return !inviteOnly(env) && !(env.ALLOWED_EMAILS || '').trim();
 }
 
 /* ---------- Google OAuth (authorization code + PKCE) ---------- */
@@ -135,7 +154,7 @@ async function finishGoogle(request, url, env) {
   if (!['https://accounts.google.com', 'accounts.google.com'].includes(claims.iss) || claims.aud !== env.GOOGLE_CLIENT_ID || claims.exp * 1000 < now())
     return fail('token');
   if (!claims.email_verified) return fail('unverified');
-  if (!allowed(claims.email, env)) return fail('not_allowed');
+  if (!(await mayEnter(claims.email, env))) return fail('not_allowed');
 
   const t = now(),
     token = randomToken();
@@ -220,6 +239,7 @@ async function getVersion(user, id, env) {
 }
 
 async function createWorkspace(request, user, env) {
+  if (inviteOnly(env) && !listed(user.email, env)) return json({ error: 'invite_only' }, 403);
   const body = await readJson(request);
   if (!body) return json({ error: 'too_large' }, 413);
   if (!body.data || !Array.isArray(body.data.tasks)) return json({ error: 'bad_data' }, 400);
