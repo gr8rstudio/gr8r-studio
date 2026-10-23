@@ -3,6 +3,8 @@
   "name": "gr8r-studio",
   "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
+  // Serves the app at studio.higherdetail.com (DNS record and certificate are created on deploy).
+  "routes": [{ "pattern": "studio.higherdetail.com", "custom_domain": true }],
   "observability": {
     "enabled": true,
   },
@@ -17,6 +19,17 @@
       "database_name": "gr8r-studio",
       "database_id": "9acb45a9-aeec-448f-a927-8d534d93f5ba",
       "migrations_dir": "migrations",
+    },
+  ],
+  // Uploaded files and attachments. Create once with `npx wrangler r2 bucket create gr8r-studio-files`.
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "gr8r-studio-files",
+    },
+    {
+      "bucket_name": "gr8r-studio-files",
+      "binding": "gr8r_studio_files",
     },
   ],
   "vars": {

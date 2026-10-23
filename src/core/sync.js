@@ -6,7 +6,7 @@
 import { merge } from './merge.js';
 
 export const session = { user: null, ws: null, list: [] };
-const hooks = { remote: () => {}, error: () => {}, saved: () => {}, removed: () => {}, canApply: () => true };
+const hooks = { remote: () => {}, error: () => {}, saved: () => {}, removed: () => {}, denied: () => {}, canApply: () => true };
 export const onSync = h => Object.assign(hooks, h);
 const POLL_MS = 10000;
 
@@ -106,7 +106,13 @@ export async function flush({ keepalive = false } = {}) {
       r = { ok: false, status: 0, body: {} };
     }
     if (session.ws !== ws) return; // switched workspace mid-request
-    if (r.ok) {
+    if (r.ok && r.body.denied) {
+      // Saved, but the server refused changes outside this person's access: show what it kept.
+      retryMs = 2000;
+      base = sent; // merge against what was sent, so the refused edits aren't kept and resent
+      adopt(r.body.data, r.body.version);
+      hooks.denied();
+    } else if (r.ok) {
       ws.version = r.body.version;
       base = sent;
       retryMs = 2000;
@@ -130,6 +136,30 @@ export async function flush({ keepalive = false } = {}) {
   })();
   await inFlight;
   inFlight = null;
+}
+
+/* ---------- files ----------
+   File contents live in R2 behind the Worker (members only); the workspace document holds each
+   file's record, whose `key` names the stored object. */
+export const MAX_FILE = 50 * 1024 * 1024;
+export const fileUrl = (f, download = false) =>
+  f?.key && session.ws ? `/api/workspaces/${session.ws.id}/files/${f.key}?name=${encodeURIComponent(f.name)}${download ? '&download=1' : ''}` : null;
+/* Upload with progress (fetch can't report upload progress). Resolves to { key, size }. */
+export function uploadFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    if (!session.ws) return reject(new Error('no workspace'));
+    const x = new XMLHttpRequest();
+    x.open('POST', `/api/workspaces/${session.ws.id}/files`);
+    x.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    x.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+    x.upload.onprogress = e => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    x.onload = () => (x.status === 201 ? resolve(JSON.parse(x.responseText)) : reject(Object.assign(new Error('upload ' + x.status), { status: x.status })));
+    x.onerror = () => reject(new Error('network'));
+    x.send(file);
+  });
+}
+export function deleteStoredFile(key) {
+  if (session.ws) api(`/workspaces/${session.ws.id}/files/${key}`, { method: 'DELETE' }).catch(() => {});
 }
 
 /* ---------- pull other people's changes ---------- */

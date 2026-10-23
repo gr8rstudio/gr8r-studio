@@ -7,6 +7,8 @@ import {
   D,
   S,
   canManage,
+  myLevel,
+  currentWsId,
   mentioned,
   myNotifs,
   notify,
@@ -34,7 +36,20 @@ import { viewOf } from '../shell/view-engine.js';
 import { TEMPLATES, closeModal, openModal } from '../overlays/modals.js';
 import { closePop, openPop, tgt } from '../overlays/popovers.js';
 import { strengthMeter } from '../pages/settings.js';
-import { attach, createWorkspace, deleteWorkspace, fetchWorkspace, flush, session, signOutServer } from '../core/sync.js';
+import { FULL } from '../../shared/permissions.js';
+import {
+  MAX_FILE,
+  attach,
+  createWorkspace,
+  deleteStoredFile,
+  deleteWorkspace,
+  fetchWorkspace,
+  fileUrl,
+  flush,
+  session,
+  signOutServer,
+  uploadFile,
+} from '../core/sync.js';
 
 export const A = {},
   IN = {},
@@ -495,11 +510,21 @@ A.copyLink = el => {
       : d.pid
         ? `project/${proj(d.pid).key.toLowerCase()}`
         : d.fid
-          ? `file/${d.fid}`
+          ? null
           : d.id && proj(d.id)
             ? `project/${proj(d.id).key.toLowerCase()}`
             : '';
-  copy(`https://gr8rstudio.com/${D().ws.url}/${path}`);
+  if (path === null) {
+    // A file link opens the stored file for anyone signed in to this workspace.
+    const f =
+      D().files.find(x => x.id === d.fid) ||
+      D()
+        .tasks.flatMap(t => t.attachments)
+        .find(a => a.id === d.fid);
+    const u = fileUrl(f);
+    return u ? copy(location.origin + u, 'File link copied') : toast("This file wasn't stored, so it has no link.", { kind: 'err' });
+  }
+  copy(`${location.origin}/?ws=${currentWsId()}#${path}`);
 };
 A.copyText = el => copy(el.dataset.text, 'Copied to clipboard');
 A.copyEmail = el => {
@@ -622,7 +647,7 @@ IN.formMore = el => {
   S.ui.form.more = el.checked;
 };
 IN.formFiles = el => {
-  [...el.files].forEach(f => S.ui.form.files.push({ name: f.name, size: fsize(f.size), type: fileType(f.name) }));
+  [...el.files].forEach(f => S.ui.form.files.push({ name: f.name, size: fsize(f.size), type: fileType(f.name), file: f }));
   render();
 };
 KEY.formAddSub = el => {
@@ -653,7 +678,8 @@ A.submitTask = () => {
     return;
   }
   S.ui.errors = {};
-  const files = f.files.map(x => ({ id: uid('a'), name: x.name, type: x.type, size: x.size, by: D().me, at: Date.now() }));
+  // Picked files upload once the task exists (see handleFiles).
+  const files = f.files.map(x => x.file).filter(Boolean);
   const base = {
     title,
     project: f.project,
@@ -679,10 +705,10 @@ A.submitTask = () => {
             .trim()
         )
           t.desc = f.desc ? `<p>${esc(f.desc)}</p>` : '';
-        t.attachments.push(...files);
       })
     )
       return;
+    handleFiles(files, { project: t.project, task: t.id });
     S.ui.modals.pop();
     render();
     toast('Changes saved');
@@ -691,11 +717,11 @@ A.submitTask = () => {
   let t;
   if (
     !mutate(() => {
-      t = createTask({ ...base, desc: f.desc ? `<p>${esc(f.desc)}</p>` : '', attachments: files });
-      files.forEach(x => D().files.unshift({ ...x, project: t.project, task: t.id }));
+      t = createTask({ ...base, desc: f.desc ? `<p>${esc(f.desc)}</p>` : '' });
     })
   )
     return;
+  handleFiles(files, { project: t.project, task: t.id });
   if (f.more) {
     Object.assign(f, { title: '', desc: '', subtasks: [], files: [] });
     render();
@@ -828,6 +854,7 @@ A.rmAttach = el => {
   const f = t.attachments.find(a => a.id === el.dataset.aid);
   mutate(() => {
     t.attachments = t.attachments.filter(a => a.id !== el.dataset.aid);
+    // The file stays in the project's Files unless it's deleted there.
     logAct('removed a file from', t);
   });
   toast(`Removed ${f.name}`);
@@ -850,31 +877,48 @@ export function handleFiles(files, ctx) {
   }
   S.ui.uploads = S.ui.uploads || [];
   [...files].forEach(file => {
+    if (file.size > MAX_FILE) return toast(`${file.name} is over the ${fsize(MAX_FILE)} limit.`, { kind: 'err' });
+    if (!file.size) return toast(`${file.name} is empty.`, { kind: 'err' });
     const up = { id: uid('u'), name: file.name, size: fsize(file.size), project: ctx.project, task: ctx.task, pct: 0 };
     S.ui.uploads.push(up);
-    const iv = setInterval(() => {
-      up.pct = Math.min(100, up.pct + 9 + Math.round(Math.random() * 22));
-      const bar = document.getElementById('upbar-' + up.id),
-        pc = document.getElementById('upct-' + up.id);
-      if (bar) bar.style.setProperty('--p', up.pct / 100);
+    const ws = currentWsId();
+    uploadFile(file, p => {
+      up.pct = Math.round(p * 100);
+      document.getElementById('upbar-' + up.id)?.style.setProperty('--p', p);
+      const pc = document.getElementById('upct-' + up.id);
       if (pc) pc.textContent = up.pct + '%';
-      if (up.pct >= 100) {
-        clearInterval(iv);
+    })
+      .then(({ key, size }) => {
         S.ui.uploads = S.ui.uploads.filter(x => x !== up);
-        const rec = { id: uid('f'), name: up.name, type: fileType(up.name), size: up.size, by: D().me, at: Date.now() };
+        if (currentWsId() !== ws) return deleteStoredFile(key); // switched workspace mid-upload
+        const rec = { id: uid('f'), key, name: file.name, type: fileType(file.name), mime: file.type, size: fsize(size), by: D().me, at: Date.now() };
         D().files.unshift({ ...rec, project: up.project, task: up.task || null });
-        if (up.task) {
-          const t = task(up.task);
+        const t = up.task && task(up.task);
+        if (t) {
           t.attachments.push(rec);
-          logAct('added a file to', t, up.name);
+          logAct('added a file to', t, file.name);
         }
         save();
         render();
-        toast(`Uploaded ${up.name}`);
-      }
-    }, 220);
+        toast(`Uploaded ${file.name}`);
+      })
+      .catch(e => {
+        S.ui.uploads = S.ui.uploads.filter(x => x !== up);
+        render();
+        toast(e.status === 413 ? `${file.name} is too large to upload.` : `Couldn't upload ${file.name}.`, { kind: 'err' });
+      });
   });
   render();
+}
+/* Delete a stored file once nothing references it. Waits so Undo can bring the record back first. */
+function releaseFile(key) {
+  if (!key) return;
+  const ws = currentWsId();
+  setTimeout(() => {
+    if (currentWsId() !== ws) return;
+    const used = D().files.some(x => x.key === key) || D().tasks.some(t => t.attachments.some(a => a.key === key));
+    if (!used) deleteStoredFile(key);
+  }, 15000);
 }
 IN.uploadFiles = el => {
   handleFiles(el.files, { project: el.dataset.project, task: el.dataset.task });
@@ -1261,6 +1305,7 @@ A.clearProjFilters = () => {
   render();
 };
 A.newProject = () => {
+  if (session.ws?.role === 'guest') return toast('Guests can only work in projects they were added to.', { kind: 'err' });
   S.ui.pform = { name: '', desc: '', icon: 'folder', color: 'indigo', team: me().team, lead: D().me, due: dOff(30), tmpl: 'blank' };
   S.ui.errors = {};
   S.ui.pop = null;
@@ -1269,6 +1314,7 @@ A.newProject = () => {
 A.editProject = el => {
   const p = proj(el.dataset.id);
   S.ui.pop = null;
+  if (myLevel(p) < FULL) return toast('Only the project lead or people with Full access can change project settings.', { kind: 'err' });
   S.ui.pform = { name: p.name, desc: p.desc, icon: p.icon, color: p.color, team: p.team, lead: p.lead, due: p.due, tmpl: 'blank' };
   S.ui.errors = {};
   openModal({ type: 'project', edit: p.id });
@@ -1542,6 +1588,7 @@ IN.shareAccess = el => {
   const p = proj(el.dataset.id);
   mutate(() => {
     p.access = el.value;
+    p.private = el.value === 'private';
   });
 };
 A.invite = () => {
@@ -1702,10 +1749,12 @@ A.delFile = el => {
       if (
         mutate(() => {
           D().files = D().files.filter(x => x !== f);
-          if (f.task && task(f.task)) task(f.task).attachments = task(f.task).attachments.filter(a => a.name !== f.name);
+          if (f.task && task(f.task)) task(f.task).attachments = task(f.task).attachments.filter(a => a.id !== f.id);
         })
-      )
+      ) {
         toast(`Deleted ${f.name}`, { action: 'Undo', onAction: () => restore(snap) });
+        releaseFile(f.key);
+      }
     },
   });
 };

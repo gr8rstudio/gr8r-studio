@@ -4,6 +4,8 @@
    /api/* reaches this code (see run_worker_first in wrangler.jsonc).
    ===================================================================== */
 
+import { applyChanges, isManager, viewFor } from '../shared/permissions.js';
+
 const SESSION_COOKIE = 'gr8r_session';
 const OAUTH_COOKIE = 'gr8r_oauth';
 const SESSION_DAYS = 30;
@@ -31,6 +33,10 @@ export default {
       if (m && request.method === 'GET') return m[2] ? getVersion(user, m[1], env) : getWorkspace(user, m[1], env);
       if (m && !m[2] && request.method === 'PUT') return saveWorkspace(request, user, m[1], env);
       if (m && !m[2] && request.method === 'DELETE') return deleteWorkspace(user, m[1], env);
+      const f = url.pathname.match(/^\/api\/workspaces\/([\w-]+)\/files(?:\/([\w-]+))?$/);
+      if (f && !f[2] && request.method === 'POST') return uploadFile(request, user, f[1], env);
+      if (f && f[2] && request.method === 'GET') return getFile(url, user, f[1], f[2], env);
+      if (f && f[2] && request.method === 'DELETE') return deleteFile(user, f[1], f[2], env);
       return json({ error: 'not_found' }, 404);
     } catch (err) {
       console.error(err);
@@ -193,7 +199,6 @@ async function logout(request, url, env) {
 /* ---------- workspaces ---------- */
 const parseOr = (s, d) => (s ? JSON.parse(s) : d);
 const ROLES = ['admin', 'member', 'guest'];
-const canManage = role => role === 'owner' || role === 'admin';
 const wsName = data => String(data?.ws?.name || 'Workspace').slice(0, 120);
 const membership = (env, id, userId) =>
   env.DB.prepare('SELECT m.role, w.owner_id FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id WHERE m.workspace_id = ? AND m.user_id = ?')
@@ -226,7 +231,14 @@ async function getWorkspace(user, id, env) {
     .bind(id, user.id)
     .first();
   if (!row) return json({ error: 'not_found' }, 404);
-  return json({ workspace: { id, data: JSON.parse(row.data), version: row.version, role: row.role, state: parseOr(row.state, null) } });
+  // Owners and admins get the stored document as is; everyone else only what they may see.
+  const data = isManager(row.role) ? row.data : JSON.stringify(viewFor(JSON.parse(row.data), row.role, user.email));
+  return new Response(
+    `{"workspace":{"id":${JSON.stringify(id)},"data":${data},"version":${row.version},"role":${JSON.stringify(row.role)},"state":${row.state || 'null'}}}`,
+    {
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
 }
 
 async function getVersion(user, id, env) {
@@ -273,18 +285,33 @@ async function saveWorkspace(request, user, id, env) {
     await env.DB.prepare('UPDATE workspace_members SET state = ? WHERE workspace_id = ? AND user_id = ?').bind(JSON.stringify(body.state), id, user.id).run();
   if (body.data === undefined) return getVersion(user, id, env);
   if (!Array.isArray(body.data?.tasks)) return json({ error: 'bad_data' }, 400);
-  const prev = await env.DB.prepare("SELECT json_extract(data, '$.members') AS members FROM workspaces WHERE id = ?").bind(id).first();
+  const conflict = row => json({ error: 'conflict', version: row.version, data: viewFor(JSON.parse(row.data), member.role, user.email) }, 409);
+  let data = body.data,
+    dropped = false,
+    prevMembers;
+  if (isManager(member.role)) {
+    prevMembers = parseOr(
+      (await env.DB.prepare("SELECT json_extract(data, '$.members') AS members FROM workspaces WHERE id = ?").bind(id).first()).members,
+      [],
+    );
+  } else {
+    // Members and guests edit a filtered copy: fold it into the stored document, keeping only the
+    // changes their project access allows.
+    const row = await env.DB.prepare('SELECT data, version FROM workspaces WHERE id = ?').bind(id).first();
+    if (row.version !== body.version) return conflict(row);
+    const full = JSON.parse(row.data);
+    prevMembers = full.members;
+    ({ data, dropped } = applyChanges(full, body.data, member.role, user.email));
+  }
   // Only write if nobody else saved since this client last loaded (optimistic concurrency).
   const res = await env.DB.prepare('UPDATE workspaces SET data = ?, name = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?')
-    .bind(JSON.stringify(body.data), wsName(body.data), now(), id, body.version)
+    .bind(JSON.stringify(data), wsName(data), now(), id, body.version)
     .run();
-  if (!res.meta.changes) {
-    const row = await env.DB.prepare('SELECT data, version FROM workspaces WHERE id = ?').bind(id).first();
-    return json({ error: 'conflict', version: row.version, data: JSON.parse(row.data) }, 409);
-  }
-  // Member and invite changes made in the app only grant or revoke access when an owner or admin saves them.
-  if (canManage(member.role)) await syncAccess(env, id, member.owner_id, user, parseOr(prev.members, []), body.data.members);
-  return json({ version: body.version + 1 });
+  if (!res.meta.changes) return conflict(await env.DB.prepare('SELECT data, version FROM workspaces WHERE id = ?').bind(id).first());
+  // Access follows the members list. Non-managers can only have added guests (see applyChanges).
+  await syncAccess(env, id, member.owner_id, user, prevMembers, data.members);
+  // When something was refused, send back what was actually saved so the app can show it.
+  return json(dropped ? { version: body.version + 1, denied: true, data: viewFor(data, member.role, user.email) } : { version: body.version + 1 });
 }
 
 async function deleteWorkspace(user, id, env) {
@@ -295,6 +322,61 @@ async function deleteWorkspace(user, id, env) {
     env.DB.prepare('DELETE FROM workspace_members WHERE workspace_id = ?').bind(id),
     env.DB.prepare('DELETE FROM workspaces WHERE id = ?').bind(id),
   ]);
+  // Remove the workspace's stored files too.
+  let cursor;
+  do {
+    const page = await env.FILES.list({ prefix: `${id}/`, cursor });
+    if (page.objects.length) await env.FILES.delete(page.objects.map(o => o.key));
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return json({ ok: true });
+}
+
+/* ---------- files (R2) ----------
+   Stored at FILES/<workspace id>/<file key>. Any member of the workspace can upload, open and delete
+   them; the file records (name, task, project) live in the workspace document. */
+const MAX_FILE = 50 * 1024 * 1024;
+// Types a browser can show without running code. Anything else downloads, so an uploaded HTML or
+// SVG file can never run script on the app's origin.
+const INLINE = /^(image\/(png|jpe?g|gif|webp|avif|bmp)|application\/pdf|text\/plain|video\/(mp4|webm|quicktime)|audio\/(mpeg|mp4|wav|ogg|webm))$/;
+
+async function uploadFile(request, user, id, env) {
+  if (!(await membership(env, id, user.id))) return json({ error: 'not_found' }, 404);
+  const len = Number(request.headers.get('Content-Length') || 0);
+  if (!len) return json({ error: 'empty' }, 400);
+  if (len > MAX_FILE) return json({ error: 'too_large', max: MAX_FILE }, 413);
+  const key = crypto.randomUUID();
+  const name = decodeURIComponent(request.headers.get('X-File-Name') || 'file').slice(0, 255);
+  await env.FILES.put(`${id}/${key}`, request.body, {
+    httpMetadata: { contentType: request.headers.get('Content-Type') || 'application/octet-stream' },
+    customMetadata: { name, by: user.id },
+  });
+  return json({ key, size: len }, 201);
+}
+
+async function getFile(url, user, id, key, env) {
+  if (!(await membership(env, id, user.id))) return json({ error: 'not_found' }, 404);
+  const obj = await env.FILES.get(`${id}/${key}`);
+  if (!obj) return json({ error: 'not_found' }, 404);
+  const type = obj.httpMetadata?.contentType || 'application/octet-stream';
+  const inline = INLINE.test(type) && !url.searchParams.has('download');
+  const name = (url.searchParams.get('name') || obj.customMetadata?.name || 'file').replace(/["\\\r\n]/g, '');
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': inline ? type : 'application/octet-stream',
+      'Content-Length': String(obj.size),
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control': 'private, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+      ...(type === 'application/pdf' ? {} : { 'Content-Security-Policy': 'sandbox' }),
+      ETag: obj.httpEtag,
+    },
+  });
+}
+
+async function deleteFile(user, id, key, env) {
+  if (!(await membership(env, id, user.id))) return json({ error: 'not_found' }, 404);
+  await env.FILES.delete(`${id}/${key}`);
   return json({ ok: true });
 }
 

@@ -2,10 +2,12 @@
 import { $$, MOD, ago, esc, fmtDate } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { PCOLORS, PICONS } from '../core/constants.js';
-import { D, S, mem, pColor, proj, task, teamsList } from '../core/store.js';
+import { D, S, mem, myLevel, pColor, proj, task, teamsList } from '../core/store.js';
+import { FULL } from '../../shared/permissions.js';
 import { FT, av, filePrev, lbl, prPill, stPill } from '../ui/helpers.js';
 import { focusKey, render } from '../shell/render.js';
 import { teamModal } from '../features/teams.js';
+import { fileUrl } from '../core/sync.js';
 
 export function openModal(m) {
   S.ui.modalOpeners = S.ui.modalOpeners || [];
@@ -175,14 +177,20 @@ export const PERMS = ['Can view', 'Can comment', 'Can edit', 'Full access'];
 export function shareModal(m, H) {
   const p = proj(m.id);
   p.perms = p.perms || {};
-  p.access = p.access || 'workspace';
+  p.access = p.access || (p.private ? 'private' : 'workspace');
+  // Only the lead and people with Full access can change sharing; everyone else sees it read-only.
+  const can = myLevel(p) >= FULL;
   return `${H(`Share “${esc(p.name)}”`)}
   <div class="modal-b">
-    <form class="row" style="gap:6px" data-submit="shareInvite"><div class="grow"><label class="sr" for="share-in">Invite by email</label><input class="input" id="share-in" placeholder="Add people by name or email" value="${esc(S.ui.shareQ || '')}" data-in="shareQ" autofocus></div>
-      <select class="select" id="share-perm" style="width:132px" aria-label="Permission">${PERMS.map(x => `<option ${x === 'Can edit' ? 'selected' : ''}>${x}</option>`).join('')}</select>
-      <button class="btn btn-primary" data-a="shareInvite" type="button">Invite</button></form>
     ${
-      S.ui.shareQ
+      can
+        ? `<form class="row" style="gap:6px" data-submit="shareInvite"><div class="grow"><label class="sr" for="share-in">Invite by email</label><input class="input" id="share-in" placeholder="Add people by name or email" value="${esc(S.ui.shareQ || '')}" data-in="shareQ" autofocus></div>
+      <select class="select" id="share-perm" style="width:132px" aria-label="Permission">${PERMS.map(x => `<option ${x === 'Can edit' ? 'selected' : ''}>${x}</option>`).join('')}</select>
+      <button class="btn btn-primary" data-a="shareInvite" type="button">Invite</button></form>`
+        : ''
+    }
+    ${
+      can && S.ui.shareQ
         ? `<div class="panel" style="padding:4px">${
             D()
               .members.filter(
@@ -202,14 +210,17 @@ export function shareModal(m, H) {
         .map(id => {
           const x = mem(id);
           if (!x) return '';
-          const perm = id === p.lead ? 'Full access' : p.perms[id] || (x.role === 'Guest' ? 'Can comment' : 'Can edit');
+          const perm =
+            id === p.lead
+              ? 'Full access'
+              : p.perms[id] || (x.role === 'Guest' ? 'Can comment' : x.role === 'Owner' || x.role === 'Admin' ? 'Full access' : 'Can edit');
           return `<div class="row" style="height:44px">${av(id, 'md', false)}<div class="grow"><div style="font-weight:500;font-size:13px">${esc(x.name)}${id === D().me ? ' <span class="faint" style="font-weight:400">(you)</span>' : ''}</div><div class="faint" style="font-size:11.5px">${esc(x.email)}${id === p.lead ? ' · Project lead' : ''}</div></div>
-          ${id === p.lead ? `<span class="muted" style="font-size:12.5px;padding-right:8px">Full access</span>` : `<select class="select" style="width:auto;height:26px;font-size:12px;border-color:transparent;background-color:transparent" data-in="sharePerm" data-id="${p.id}" data-mid="${id}" aria-label="Permission for ${esc(x.name)}">${PERMS.map(q => `<option ${q === perm ? 'selected' : ''}>${q}</option>`).join('')}<option value="__remove">Remove access</option></select>`}</div>`;
+          ${id === p.lead || !can ? `<span class="muted" style="font-size:12.5px;padding-right:8px">${id === p.lead ? 'Full access' : perm}</span>` : `<select class="select" style="width:auto;height:26px;font-size:12px;border-color:transparent;background-color:transparent" data-in="sharePerm" data-id="${p.id}" data-mid="${id}" aria-label="Permission for ${esc(x.name)}">${PERMS.map(q => `<option ${q === perm ? 'selected' : ''}>${q}</option>`).join('')}<option value="__remove">Remove access</option></select>`}</div>`;
         })
         .join('')}
     </div>
     <div style="border-top:1px solid var(--divider);padding-top:12px"><div class="eyebrow" style="margin-bottom:8px">General access</div>
-      <div class="row" style="gap:10px"><span class="ftype" style="--c:var(--text-2)">${ic(p.access === 'private' ? 'lock' : 'building-2', 14)}</span><div class="grow"><select class="select" style="height:28px;width:auto;border-color:transparent;padding-left:4px;font-weight:500" data-in="shareAccess" data-id="${p.id}" aria-label="General access"><option value="private" ${p.access === 'private' ? 'selected' : ''}>Only people invited</option><option value="workspace" ${p.access === 'workspace' ? 'selected' : ''}>Everyone at ${esc(D().ws.name)}</option></select><div class="faint" style="font-size:11.5px;padding-left:4px">${p.access === 'private' ? 'Only people listed above can open this project.' : 'Anyone in the workspace can view and comment.'}</div></div></div></div>
+      <div class="row" style="gap:10px"><span class="ftype" style="--c:var(--text-2)">${ic(p.access === 'private' ? 'lock' : 'building-2', 14)}</span><div class="grow">${can ? `<select class="select" style="height:28px;width:auto;border-color:transparent;padding-left:4px;font-weight:500" data-in="shareAccess" data-id="${p.id}" aria-label="General access"><option value="private" ${p.access === 'private' ? 'selected' : ''}>Only people invited</option><option value="workspace" ${p.access === 'workspace' ? 'selected' : ''}>Everyone at ${esc(D().ws.name)}</option></select>` : `<div style="font-weight:500;padding-left:4px">${p.access === 'private' ? 'Only people invited' : `Everyone at ${esc(D().ws.name)}`}</div>`}<div class="faint" style="font-size:11.5px;padding-left:4px">${p.access === 'private' ? 'Only the people listed above, plus workspace owners and admins, can open it.' : 'Every member of the workspace can open and edit it. Guests need to be added above.'}</div></div></div></div>
   </div>
   <div class="modal-f"><button class="btn btn-secondary" data-a="copyLink" data-pid="${p.id}">${ic('link', 14)}Copy link</button><span class="sp"></span><button class="btn btn-primary" data-a="closeModal">Done</button></div>`;
 }
@@ -283,8 +294,23 @@ export function shortcutsModal(H) {
 export function filePreviewModal(m, H) {
   const f = m.file;
   const t = FT[f.type] || FT.other;
+  const url = fileUrl(f);
+  const mime = f.mime || '';
+  const box = 'border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden';
+  const view = !url
+    ? `<div style="${box}">${filePrev(f).replace('class="fprev"', 'class="fprev" style="aspect-ratio:16/9"')}</div>`
+    : f.type === 'img'
+      ? `<div style="${box};display:flex;justify-content:center;background:var(--sunken)"><img src="${esc(url)}" alt="${esc(f.name)}" style="max-width:100%;max-height:65vh;object-fit:contain"></div>`
+      : f.type === 'pdf'
+        ? `<iframe src="${esc(url)}" title="${esc(f.name)}" style="${box};width:100%;height:65vh;display:block"></iframe>`
+        : /^video\//.test(mime)
+          ? `<video src="${esc(url)}" controls style="${box};width:100%;max-height:65vh;display:block"></video>`
+          : /^audio\//.test(mime)
+            ? `<audio src="${esc(url)}" controls style="width:100%"></audio>`
+            : `<div style="${box}">${filePrev(f).replace('class="fprev"', 'class="fprev" style="aspect-ratio:16/9"')}</div>`;
   return `${H(esc(f.name), `${t.n} · ${f.size} · Uploaded by ${esc(mem(f.by)?.name || 'you')} ${ago(f.at)}`)}
-  <div class="modal-b"><div style="border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden">${filePrev(f).replace('class="fprev"', 'class="fprev" style="aspect-ratio:16/9"')}</div>
+  <div class="modal-b">${view}
+  ${url ? '' : `<div class="alert info">${ic('info', 14)}<span>This file was added before uploads were stored, so only its name was saved.</span></div>`}
   ${m.tid ? `<div class="row faint" style="font-size:12.5px">${ic('link', 13)}Attached to <button class="link" data-a="openTask" data-id="${m.tid}">${esc(task(m.tid)?.title)}</button></div>` : ''}</div>
-  <div class="modal-f"><button class="btn btn-secondary" data-a="copyLink" data-fid="${f.id}">${ic('link', 14)}Copy link</button><span class="sp"></span><button class="btn btn-primary" data-a="closeModal">Close</button></div>`;
+  <div class="modal-f">${url ? `<button class="btn btn-secondary" data-a="copyLink" data-fid="${f.id}">${ic('link', 14)}Copy link</button><a class="btn btn-secondary" href="${esc(url)}" target="_blank" rel="noopener">${ic('external-link', 14)}Open</a>` : ''}<span class="sp"></span>${url ? `<a class="btn btn-primary" href="${esc(fileUrl(f, true))}" download="${esc(f.name)}">${ic('download', 14)}Download</a>` : ''}<button class="btn ${url ? 'btn-secondary' : 'btn-primary'}" data-a="closeModal">Close</button></div>`;
 }

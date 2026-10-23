@@ -3,6 +3,7 @@ import { TODAY, diffD, fmtDate, iso, parse, uid } from './utils.js';
 import { PCOLORS, TEAMS_SEED } from './constants.js';
 import { emptyWorkspace } from '../data/workspace.js';
 import { queueSave, session } from './sync.js';
+import { VIEW, projectLevel } from '../../shared/permissions.js';
 
 export const DEFAULT_PREFS = {
   theme: 'system',
@@ -146,7 +147,9 @@ export const visibleProjects = () =>
     .projOrder.map(proj)
     .filter(Boolean)
     .filter(p => !p.archived);
-export const canSee = p => !p.private || p.members.includes(D().me);
+/* My access to a project (shared/permissions.js; the server enforces the same rules). */
+export const myLevel = p => projectLevel(p, session.ws?.role || 'member', D().me);
+export const canSee = p => !!p && myLevel(p) >= VIEW;
 export const tasksOf = pid => D().tasks.filter(t => t.project === pid && !t.archived);
 export const allTasks = () => D().tasks.filter(t => !t.archived && canSee(proj(t.project)));
 export const isOver = t => t.due && t.status !== 'done' && diffD(parse(t.due), TODAY) < 0;

@@ -83,7 +83,8 @@ async function openWorkspace(user) {
   const { workspaces, joined } = await fetchWorkspaces();
   let ws = null,
     isNew = false;
-  const pick = workspaces.find(w => w.id === joined[0]) || workspaces.find(w => w.id === lastWs()) || workspaces[0];
+  const linked = new URLSearchParams(location.search).get('ws');
+  const pick = workspaces.find(w => w.id === linked) || workspaces.find(w => w.id === joined[0]) || workspaces.find(w => w.id === lastWs()) || workspaces[0];
   if (pick) ws = await fetchWorkspace(pick.id);
   if (!ws) {
     ws = await createWorkspace(newWorkspace('My Workspace', user), null);
@@ -109,6 +110,7 @@ onSync({
     if (S.ui.drawer && !D().tasks.some(t => t.id === S.ui.drawer)) S.ui.drawer = null;
     render();
   },
+  denied: () => toast("Some changes weren't saved because you don't have permission to make them.", { kind: 'err', ms: 5000 }),
   // Don't redraw under someone mid-edit: wait for the next poll.
   canApply: () => !document.activeElement?.matches('input, textarea, [contenteditable="true"]') && !S.ui.modals.length,
   removed: () => {
@@ -144,6 +146,15 @@ onSync({
   const q = new URLSearchParams(location.search);
   let err = q.get('auth_error');
   if (err) history.replaceState(null, '', location.pathname + location.hash);
+  // A shared link opened while signed out: Google sends people back to "/", so go back to the link.
+  let next = null;
+  try {
+    next = sessionStorage.getItem('gr8r.next');
+    sessionStorage.removeItem('gr8r.next');
+  } catch {
+    /* storage blocked */
+  }
+  if (next && !err && !location.hash && !location.search) history.replaceState(null, '', next);
 
   let user = null,
     opened = null;
@@ -156,6 +167,11 @@ onSync({
     err = AUTH_ERRORS[e.code] ? e.code : 'offline';
   }
   if (!user) {
+    try {
+      if (location.hash || location.search) sessionStorage.setItem('gr8r.next', location.pathname + location.search + location.hash);
+    } catch {
+      /* storage blocked */
+    }
     S.ui.auth = 'login';
     if (err) S.ui.errors = { login: AUTH_ERRORS[err] || "Sign-in didn't complete. Please try again." };
     render();
@@ -167,6 +183,16 @@ onSync({
     S.ui.onb = 0;
   } else if (h && ROUTE_NAMES[h]) S.ui.route = h;
   else S.ui.route = S.prefs.home || 'home';
+  // Links from Copy link: #task/KEY or #project/key, with ?ws=<workspace id>.
+  const [kind, key] = h.split('/');
+  const linkedTask = kind === 'task' && D().tasks.find(t => t.key === key);
+  const linkedProj = kind === 'project' && D().projects.find(p => (p.key || '').toLowerCase() === (key || '').toLowerCase());
+  if (linkedTask || linkedProj) {
+    S.ui.route = 'project';
+    S.ui.params = { id: linkedTask ? linkedTask.project : linkedProj.id, tab: S.prefs.defaultTab || 'board' };
+    if (linkedTask) S.ui.drawer = linkedTask.id;
+  } else if (kind === 'task' || kind === 'project') toast("That link isn't available. It may have been deleted, or you don't have access.", { kind: 'err' });
+  if (location.search || kind === 'task' || kind === 'project') history.replaceState(null, '', '/');
   if (dueReminders()) save();
   render();
   if (opened.joined) toast(`You've joined ${D().ws.name}`);

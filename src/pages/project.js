@@ -4,7 +4,8 @@
 import { esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { PSTAT } from '../core/constants.js';
-import { D, S, canSee, proj, tasksOf } from '../core/store.js';
+import { D, S, canSee, myLevel, proj, tasksOf } from '../core/store.js';
+import { COMMENT, EDIT, FULL, LEVEL_NAME } from '../../shared/permissions.js';
 import { avStack, empty, pIcon } from '../ui/helpers.js';
 import { applyView, groupTasks, viewOf, viewToolbar } from '../shell/view-engine.js';
 import { listHtml } from '../components/task-list.js';
@@ -52,6 +53,7 @@ export function pageProject() {
   else if (tab === 'activity') body = projActivity(p);
   else body = taskViewBody(tab, applyView(ts, viewOf(key)), key, p);
 
+  const lv = myLevel(p);
   return `<div class="page flush">
     <div class="proj-h">
       <div class="t">
@@ -59,12 +61,17 @@ export function pageProject() {
         <h1>${esc(p.name)}</h1>
         <button class="ibtn ibtn-sm" data-a="toggleFavProj" data-id="${p.id}" data-tip="${p.fav ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${p.fav}" aria-label="Favorite" style="${p.fav ? 'color:var(--amber)' : ''}">${ic('star', 15)}</button>
         <button class="pillbtn bordered" data-a="pop" data-pop="pstatus" data-id="${p.id}" aria-label="Project status" style="height:24px"><span class="pdot" style="--c:${PSTAT[p.status].c};border-radius:50%;width:7px;height:7px"></span>${PSTAT[p.status].name}${ic('chevron-down', 12)}</button>
+        ${lv < FULL ? `<span class="badge" data-tip="Your access to this project">${ic(lv >= EDIT ? 'pencil' : lv >= COMMENT ? 'message-square' : 'eye', 11)}${LEVEL_NAME[lv]}</span>` : ''}
         <span class="sp"></span>
         <div class="row" style="gap:4px">
           <button class="row" data-a="share" data-id="${p.id}" aria-label="Members" style="gap:0">${avStack(p.members, 5, 'md')}</button>
-          <button class="ibtn ibtn-sm" data-a="share" data-id="${p.id}" data-tip="Add member" aria-label="Add member">${ic('user-plus', 15)}</button>
+          ${
+            lv >= FULL
+              ? `<button class="ibtn ibtn-sm" data-a="share" data-id="${p.id}" data-tip="Add member" aria-label="Add member">${ic('user-plus', 15)}</button>
           <button class="btn btn-secondary btn-sm hide-m" data-a="share" data-id="${p.id}">${ic('share-2', 13)}Share</button>
-          <button class="ibtn ibtn-sm" data-a="editProject" data-id="${p.id}" data-tip="Project settings" aria-label="Project settings">${ic('settings', 15)}</button>
+          <button class="ibtn ibtn-sm" data-a="editProject" data-id="${p.id}" data-tip="Project settings" aria-label="Project settings">${ic('settings', 15)}</button>`
+              : ''
+          }
           <button class="ibtn ibtn-sm" data-a="ctxBtn" data-ctx="project" data-id="${p.id}" aria-label="More">${ic('ellipsis', 15)}</button>
         </div>
       </div>

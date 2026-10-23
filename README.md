@@ -53,6 +53,17 @@ Who can sign in is set in `wrangler.jsonc`:
   one). Someone removed from every workspace is signed out on their next request. When `"false"`
   and `ALLOWED_EMAILS` is empty, any Google account can sign in.
 
+## Custom domain
+
+`wrangler.jsonc` routes `studio.higherdetail.com` to the Worker (the `higherdetail.com` zone is on
+Cloudflare, so deploy creates the DNS record and certificate). Sign-in works on any address the
+Worker answers on, because the Google redirect is built from the request's own address; each one
+must be listed in the Google client's **Authorized redirect URIs**:
+`https://studio.higherdetail.com/api/auth/callback`.
+
+**Copy link** gives `https://<address>/?ws=<workspace id>#task/<KEY>` (or `#project/<key>`).
+Someone who's signed out is sent back to the link after signing in.
+
 ## Deploy to Cloudflare
 
 Everything fits the Workers free plan. One-time setup:
@@ -61,6 +72,7 @@ Everything fits the Workers free plan. One-time setup:
 npx wrangler login
 npx wrangler d1 create gr8r-studio        # paste the printed database_id into wrangler.jsonc
 npm run db:migrate:remote
+npx wrangler r2 bucket create gr8r-studio-files
 npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npm run deploy
@@ -85,6 +97,18 @@ After that, `npm run deploy` ships each change. Add a migration file in `migrati
   same field, the later save wins. Open workspaces check for other people's changes every 10
   seconds while the tab is visible.
 - Sessions are 30-day HttpOnly cookies. Only a SHA-256 hash of the token is stored.
+
+## Files
+
+Uploaded files and task attachments are stored in the R2 bucket `gr8r-studio-files` (binding
+`FILES`), under `<workspace id>/<file key>`; the workspace document holds each file's record. The
+Worker checks workspace membership on every upload, download and delete, so a file link only
+works for people in that workspace.
+
+- Up to 50 MB per file. Images, PDFs, video and audio open in the preview; everything else
+  downloads (so an uploaded HTML or SVG file can't run on the app's address).
+- Deleting a file removes the stored copy 15 seconds later, after the Undo window, unless a
+  duplicate still uses it. Deleting a workspace removes all its files.
 
 ## Notifications
 
@@ -113,8 +137,19 @@ invited email. Pending invites live in the `invites` table until then.
 - Only owners and admins can change access. The server applies member changes only from their
   saves, so a member editing the list has no effect on who can get in. The owner can't be
   removed.
-- Everyone with access can read and edit the whole workspace. Guest and per-project permissions
-  are shown in the app but are not enforced by the server.
+- Project access is enforced by the server (`shared/permissions.js`, used by both the Worker and
+  the app):
+  - Owners and admins: full access to every project.
+  - Members: every project open to the workspace, plus private ones they were added to (default
+    **Can edit**).
+  - Guests: only projects they were added to (default **Can comment**).
+  - Per-person levels in a project's **Share** dialog: Can view, Can comment, Can edit, Full
+    access. The project lead and Full access can change the project's settings and sharing.
+- Members and guests download only what they can see (and only their own notifications). Their
+  saves are folded into the stored workspace keeping only the changes their access allows; if
+  anything was refused, the app shows what was kept.
+- File links aren't checked per project: a file's key is random and only appears in the projects
+  that can see it.
 
 ## Project structure
 
