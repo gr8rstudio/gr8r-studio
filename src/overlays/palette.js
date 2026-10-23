@@ -2,7 +2,7 @@
 import { MOD, clamp, esc } from '../core/utils.js';
 import { LOGO, ic, wsLogo } from '../core/icons.js';
 import { PSTAT } from '../core/constants.js';
-import { D, S, allTasks, pColor, proj, save, task, workspaceList } from '../core/store.js';
+import { D, S, allTasks, pColor, proj, save, task, visibleProjects, workspaceList } from '../core/store.js';
 import { FT, av, hl, stIcon } from '../ui/helpers.js';
 import { effectiveDark } from '../core/theme.js';
 import { go, render } from '../shell/render.js';
@@ -114,14 +114,9 @@ export function paletteItems() {
       items: [
         { icon: 'clock-alert', name: 'Overdue tasks', run: () => A.goTasks({ dataset: { f: 'overdue' } }) },
         { icon: 'user', name: 'Tasks assigned to me', run: () => go('mytasks') },
-        {
-          icon: 'signal-high',
-          name: 'High priority in Website Redesign',
-          run: () => {
-            go('project', { id: 'p1', tab: 'v:v1' });
-          },
-        },
-        { icon: 'paperclip', name: 'Files in Website Redesign', run: () => go('project', { id: 'p1', tab: 'files' }) },
+        ...visibleProjects()
+          .slice(0, 2)
+          .map(p => ({ icon: 'folder', name: `Open ${p.name}`, run: () => go('project', { id: p.id }) })),
       ],
     });
     return groups;

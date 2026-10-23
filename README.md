@@ -67,9 +67,10 @@ After that, `npm run deploy` ships each change. Add a migration file in `migrati
 ## How data is stored
 
 - On first sign-in, a person who was added to someone's workspace opens that workspace. Anyone
-  else gets a new workspace seeded with the sample data (or the data the pre-sign-in version saved
-  in this browser, which is then removed locally). **Create workspace** in the workspace menu
-  makes an empty one; the menu lists every workspace you belong to.
+  else gets a new, empty workspace and goes through setup (name, first project from a template,
+  invites). **Create workspace** in the workspace menu makes another; the menu lists every
+  workspace you belong to. **Delete workspace** (owner only, in workspace settings) removes it for
+  everyone.
 - Each workspace (`S.data`) is stored as one JSON document in `workspaces`. Each member's
   preferences and view settings are stored in `workspace_members.state`.
 - `save()` in `core/store.js` queues an upload through `core/sync.js` (debounced, one request at
@@ -90,7 +91,6 @@ invited email. Pending invites live in the `invites` table until then.
 - Only owners and admins can change access. The server applies member changes only from their
   saves, so a member editing the list has no effect on who can get in. The owner can't be
   removed.
-- Sample people in the seeded workspace are flagged `demo` and never get access.
 - Everyone with access can read and edit the whole workspace. Guest and per-project permissions
   are shown in the app but are not enforced by the server.
 
@@ -116,7 +116,7 @@ src/
     pages/              settings, auth & onboarding
   core/                 utilities, constants, icons, store (state + lookups), sync (server API),
                         merge (combines concurrent edits), theme
-  data/seed.js          demo workspace data
+  data/workspace.js     the empty workspace a new workspace starts from
   ui/                   shared render helpers, toasts, the select dropdown
   shell/                render loop and router, sidebar/topbar layout, skeletons, view engine
   components/           task list renderer

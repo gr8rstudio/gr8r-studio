@@ -2,7 +2,7 @@
 import { dOff } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { LABELS, PCOLORS, PRIOS, STATUSES } from '../core/constants.js';
-import { S, allTasks, task } from '../core/store.js';
+import { D, S, allTasks } from '../core/store.js';
 import { av, avStack, empty, lbl, pStatus, prPill, progBar, stPill } from '../ui/helpers.js';
 import { sItem } from '../shell/layout.js';
 import { sk, skRows } from '../shell/skeletons.js';
@@ -126,8 +126,12 @@ export function pageSystem() {
       <div class="tabs">${['Overview', 'Board', 'List', 'Table'].map((t, i) => `<button class="tab ${i === 1 ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="row"><div class="seg"><button class="on">${ic('layout-grid', 13)}Grid</button><button>${ic('list', 13)}List</button><button>${ic('table-2', 13)}Table</button></div><span class="chip">${ic('circle-dot', 12)}<b>Status</b> is <span>In Progress</span><span class="ibtn">${ic('x', 12)}</span></span></div></div></div></div>
     <div class="ds-sec"><h2>Data display</h2><div class="grid2" style="grid-template-columns:300px 1fr">
-      <div style="background:var(--sunken);padding:10px;border-radius:var(--r-lg)">${kcard(task('t3') || allTasks()[0])}</div>
-      <div class="col" style="gap:12px"><div class="ds-row"><span class="lab">Avatar</span>${['m1', 'm2', 'm3'].map(i => av(i, 'sm')).join('')}${av('m4')}${av('m5', 'md')}${av('m6', 'lg')}${av(null)}${avStack(['m1', 'm2', 'm3', 'm4', 'm5', 'm6'], 4, 'md')}</div>
+      <div style="background:var(--sunken);padding:10px;border-radius:var(--r-lg)">${allTasks()[0] ? kcard(allTasks()[0]) : '<span class="faint" style="font-size:13px">Add a task to preview its card.</span>'}</div>
+      <div class="col" style="gap:12px"><div class="ds-row"><span class="lab">Avatar</span>${av(D().me, 'sm')}${av(D().me)}${av(D().me, 'md')}${av(D().me, 'lg')}${av(null)}${avStack(
+        D().members.map(m => m.id),
+        4,
+        'md',
+      )}</div>
       <div class="ds-row"><span class="lab">Badge</span><span class="badge">Default</span><span class="badge accent">Accent</span><span class="badge green"><span class="dot"></span>Active</span><span class="badge amber"><span class="dot"></span>Invited</span><span class="badge red">3 overdue</span>${pStatus('active')}${pStatus('risk')}</div>
       <div class="ds-row"><span class="lab">Progress</span><span style="width:200px;display:flex">${progBar(64)}</span><span style="width:120px;display:flex">${progBar(100, 'green')}</span><span style="width:120px;display:flex">${progBar(30, 'red')}</span></div>
       <div class="panel" style="overflow:hidden">${allTasks()

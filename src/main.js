@@ -6,7 +6,7 @@ import './styles/index.css';
 import './core/utils.js';
 import './core/icons.js';
 import './core/constants.js';
-import './data/seed.js';
+import './data/workspace.js';
 import './core/store.js';
 import './ui/helpers.js';
 import './core/theme.js';
@@ -54,9 +54,8 @@ import './features/archive.js';
 import './actions/teams.js';
 import './actions/subtasks.js';
 import './actions/archive.js';
-import { S, D, adoptMe, dropLegacyWorkspace, freshSeed, hydrate, legacyWorkspace } from './core/store.js';
+import { S, D, adoptMe, hydrate, newWorkspace } from './core/store.js';
 import { attach, createWorkspace, fetchMe, fetchWorkspace, fetchWorkspaces, onSync } from './core/sync.js';
-import { seed } from './data/seed.js';
 import { A } from './actions/actions.js';
 import { ROUTE_NAMES, render, go } from './shell/render.js';
 import { toast } from './ui/toast.js';
@@ -78,26 +77,17 @@ const lastWs = () => {
   }
 };
 
-/* Open the workspace used last (or one just shared with this person). On first sign-in with no
-   shared workspace, create one: from data saved in this browser before sign-in existed if there is
-   any, otherwise the sample workspace. */
+/* Open the workspace used last (or one just shared with this person). Someone with no workspace
+   gets an empty one and goes through setup. */
 async function openWorkspace(user) {
   const { workspaces, joined } = await fetchWorkspaces();
-  let ws = null;
+  let ws = null,
+    isNew = false;
   const pick = workspaces.find(w => w.id === joined[0]) || workspaces.find(w => w.id === lastWs()) || workspaces[0];
   if (pick) ws = await fetchWorkspace(pick.id);
   if (!ws) {
-    const legacy = legacyWorkspace();
-    if (legacy) {
-      // The sample people in old browser data have fictional emails: never give those access.
-      const demo = new Set(seed().members.map(m => m.email));
-      legacy.data.members.forEach(m => {
-        if (m.id === legacy.data.me) Object.assign(m, { email: user.email, role: 'Owner', status: 'active' });
-        else if (demo.has(m.email)) m.demo = true;
-      });
-    }
-    ws = await createWorkspace(legacy?.data || freshSeed(user), legacy ? { prefs: legacy.prefs, views: legacy.views, collapsed: legacy.collapsed } : null);
-    if (legacy) dropLegacyWorkspace();
+    ws = await createWorkspace(newWorkspace('My Workspace', user), null);
+    isNew = true;
   }
   hydrate(ws);
   attach(ws);
@@ -106,7 +96,7 @@ async function openWorkspace(user) {
   } catch {
     /* storage blocked */
   }
-  return joined.includes(ws.id) ? ws : null;
+  return { joined: joined.includes(ws.id), isNew };
 }
 
 let saveErrShown = false;
@@ -155,10 +145,10 @@ onSync({
   if (err) history.replaceState(null, '', location.pathname + location.hash);
 
   let user = null,
-    joined = null;
+    opened = null;
   try {
     user = await fetchMe();
-    if (user) joined = await openWorkspace(user);
+    if (user) opened = await openWorkspace(user);
   } catch (e) {
     console.error(e);
     user = null;
@@ -171,11 +161,13 @@ onSync({
     return;
   }
   const h = (location.hash || '').slice(1);
-  if (h === 'onboarding') S.ui.auth = h;
-  else if (h && ROUTE_NAMES[h]) S.ui.route = h;
+  if (opened.isNew || h === 'onboarding') {
+    S.ui.auth = 'onboarding';
+    S.ui.onb = 0;
+  } else if (h && ROUTE_NAMES[h]) S.ui.route = h;
   else S.ui.route = S.prefs.home || 'home';
   render();
-  if (joined) toast(`You've joined ${D().ws.name}`);
+  if (opened.joined) toast(`You've joined ${D().ws.name}`);
 })();
 
 // Dev-only handle for debugging and screenshot tooling; stripped from production builds.

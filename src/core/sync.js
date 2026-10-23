@@ -54,6 +54,12 @@ export function attach(ws) {
   const item = session.list.find(w => w.id === ws.id);
   if (item) item.name = ws.data.ws?.name || item.name;
 }
+/* Owner only. Resolves to true once the workspace and its memberships are gone. */
+export async function deleteWorkspace(id) {
+  const r = await api('/workspaces/' + id, { method: 'DELETE' });
+  if (r.ok) session.ws = null;
+  return r.ok;
+}
 export async function signOutServer() {
   await flush();
   await api('/auth/logout', { method: 'POST' }).catch(() => {});

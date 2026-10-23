@@ -1,7 +1,7 @@
 /* ---------- store ---------- */
 import { TODAY, diffD, iso, parse, uid } from './utils.js';
 import { PCOLORS, TEAMS_SEED } from './constants.js';
-import { seed } from '../data/seed.js';
+import { emptyWorkspace } from '../data/workspace.js';
 import { queueSave, session } from './sync.js';
 
 export const DEFAULT_PREFS = {
@@ -21,9 +21,7 @@ export const DEFAULT_PREFS = {
 };
 
 /* Workspace data lives on the server (core/sync.js). The browser only keeps UI preferences so the
-   sign-in screen opens in the right theme. STORE_KEY is the pre-sync key: its data is uploaded once
-   on first sign-in, then removed. */
-export const STORE_KEY = 'gr8r.v2';
+   sign-in screen opens in the right theme. */
 export const UI_KEY = 'gr8r.ui';
 function readLocal(key) {
   try {
@@ -33,20 +31,9 @@ function readLocal(key) {
     return null; /* storage blocked or corrupt */
   }
 }
-export const legacyWorkspace = () => {
-  const j = readLocal(STORE_KEY);
-  return j?.data?.tasks ? j : null;
-};
-export function dropLegacyWorkspace() {
-  try {
-    localStorage.removeItem(STORE_KEY);
-  } catch {
-    /* storage blocked */
-  }
-}
 export const saved = readLocal(UI_KEY);
 export const S = {
-  data: seed(),
+  data: emptyWorkspace(),
   prefs: Object.assign({}, DEFAULT_PREFS, saved?.prefs || {}),
   views: {},
   ui: {
@@ -134,26 +121,8 @@ export function adoptMe(user = session.user) {
   }
   d.me = m.id;
 }
-/* Sample workspace with the signed-in person as its owner. The sample people are flagged `demo` so
-   the server never gives their (fictional) email addresses access. */
-export function freshSeed(user = session.user) {
-  const d = seed();
-  d.members.forEach(m => {
-    if (m.id === d.me) Object.assign(m, user ? { name: user.name, email: user.email, role: 'Owner', status: 'active' } : {});
-    else m.demo = true;
-  });
-  return d;
-}
-/* An empty workspace named `name`, owned by the signed-in person. */
-export function blankWorkspace(name, user = session.user) {
-  const d = freshSeed(user);
-  const keys = ['projects', 'tasks', 'comments', 'activity', 'notifs', 'files', 'events', 'projOrder', 'savedViews', 'recentSearches'];
-  keys.forEach(k => (d[k] = []));
-  d.members = d.members.filter(m => m.id === d.me);
-  delete d.teams;
-  d.ws = { name, url: name.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'workspace', c: '#5A67D8' };
-  return d;
-}
+/* A new, empty workspace owned by the signed-in person. */
+export const newWorkspace = (name, user = session.user) => emptyWorkspace(name, user);
 /* Workspaces this person can open, for the switcher. */
 export const workspaceList = () =>
   session.list.map((w, i) => ({

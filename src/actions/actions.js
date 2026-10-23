@@ -5,13 +5,11 @@ import { $, $$, TODAY, addD, dOff, esc, fmtDate, iso, parse, uid } from '../core
 import { PR, PSTAT, ST } from '../core/constants.js';
 import {
   D,
-  DEFAULT_PREFS,
   S,
-  blankWorkspace,
   canManage,
-  freshSeed,
   hydrate,
   memberState,
+  newWorkspace,
   allTasks,
   canSee,
   commentsOf,
@@ -32,7 +30,7 @@ import { viewOf } from '../shell/view-engine.js';
 import { TEMPLATES, closeModal, openModal } from '../overlays/modals.js';
 import { closePop, openPop, tgt } from '../overlays/popovers.js';
 import { strengthMeter } from '../pages/settings.js';
-import { attach, createWorkspace, fetchWorkspace, flush, signOutServer } from '../core/sync.js';
+import { attach, createWorkspace, deleteWorkspace, fetchWorkspace, flush, session, signOutServer } from '../core/sync.js';
 
 export const A = {},
   IN = {},
@@ -562,7 +560,14 @@ A.editTask = el => {
   S.ui.errors = {};
   openModal({ type: 'task', edit: t.id });
 };
+/* Tasks belong to a project, so an empty workspace needs one first. */
+function needProject() {
+  if (visibleProjects().length) return true;
+  toast('Create a project first, then add tasks to it.', { kind: 'info', action: 'New project', onAction: () => A.newProject() });
+  return false;
+}
 A.newTask = el => {
+  if (!needProject()) return;
   const d = el?.dataset || {};
   const pid =
     d.project ||
@@ -573,7 +578,7 @@ A.newTask = el => {
   S.ui.form = {
     title: '',
     desc: '',
-    project: canSee(proj(pid)) ? pid : 'p1',
+    project: pid && canSee(proj(pid)) ? pid : visibleProjects()[0].id,
     status: 'todo',
     assignee: d.assignee || D().me,
     priority: 'medium',
@@ -708,7 +713,8 @@ A.commitComposer = () => {
     return;
   }
   const f = { title: v, ...c.gb };
-  f.project = f.project || projectFromKey(c.ctx) || curProjectId() || 'p1';
+  if (!needProject()) return;
+  f.project = f.project || projectFromKey(c.ctx) || curProjectId() || visibleProjects()[0].id;
   if (c.ctx === 'mytasks') f.assignee = D().me;
   mutate(() => createTask(f));
   setTimeout(() => $('#composer-in')?.focus(), 0);
@@ -1834,25 +1840,6 @@ A.retryOnline = el => {
     toast('Reconnected. All changes are synced.');
   }, 700);
 };
-A.resetDemo = () => {
-  S.ui.pop = null;
-  confirmDlg({
-    title: 'Reset demo data?',
-    body: 'All projects, tasks, and settings in this browser go back to the original sample workspace.',
-    ok: 'Reset data',
-    danger: true,
-    icon: 'rotate-ccw',
-    run: () => {
-      S.data = freshSeed();
-      S.views = {};
-      S.prefs = { ...DEFAULT_PREFS, theme: S.prefs.theme, name: S.prefs.name, title: S.prefs.title };
-      S.ui.drawer = null;
-      save();
-      go('home');
-      toast('Demo data restored');
-    },
-  });
-};
 A.toastInfo = el => toast(el.dataset.msg, { kind: 'info' });
 A.demoToast = el => {
   const v = el.dataset.v;
@@ -1959,22 +1946,25 @@ A.saveWorkspace = () => {
       toast('Workspace settings saved');
   });
 };
-A.delWorkspace = () =>
+A.delWorkspace = () => {
+  if (session.ws?.role !== 'owner') return toast('Only the workspace owner can delete it.', { kind: 'err' });
   confirmDlg({
     title: `Delete ${D().ws.name}?`,
     body: 'Every project, task, file, and comment in this workspace will be permanently deleted for all members.',
     ok: 'Delete workspace',
     danger: true,
     typeName: D().ws.name,
-    run: () => {
-      S.data = freshSeed();
-      S.views = {};
-      S.ui.drawer = null;
-      save();
-      go('home');
-      toast('Workspace deleted. It now holds the sample data again.', { kind: 'info', ms: 5000 });
+    run: async () => {
+      if (!(await deleteWorkspace(session.ws.id))) return toast("Couldn't delete the workspace. Try again.", { kind: 'err' });
+      try {
+        localStorage.removeItem('gr8r.ws');
+      } catch {
+        /* storage blocked */
+      }
+      location.replace('/');
     },
   });
+};
 A.avColor = el => {
   me().c = el.dataset.v;
   save();
@@ -2258,7 +2248,7 @@ A.onbFinish = async el => {
     el?.classList.add('is-loading');
     try {
       await flush();
-      openWs(await createWorkspace(blankWorkspace(o.ws.trim() || 'My Workspace'), memberState()));
+      openWs(await createWorkspace(newWorkspace(o.ws.trim() || 'My Workspace'), memberState()));
     } catch {
       el?.classList.remove('is-loading');
       return toast("Couldn't create the workspace. Try again.", { kind: 'err' });

@@ -3,7 +3,9 @@
   "name": "gr8r-studio",
   "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
-  "observability": { "enabled": true },
+  "observability": {
+    "enabled": true,
+  },
   "assets": {
     "not_found_handling": "single-page-application",
     // Only API calls run the Worker; every other request is a free static-asset hit.
@@ -13,8 +15,7 @@
     {
       "binding": "DB",
       "database_name": "gr8r-studio",
-      // Replace with the id printed by `npx wrangler d1 create gr8r-studio` (see README).
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "9acb45a9-aeec-448f-a927-8d534d93f5ba",
       "migrations_dir": "migrations",
     },
   ],

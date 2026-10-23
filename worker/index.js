@@ -28,6 +28,7 @@ export default {
       const m = url.pathname.match(/^\/api\/workspaces\/([\w-]+)(\/version)?$/);
       if (m && request.method === 'GET') return m[2] ? getVersion(user, m[1], env) : getWorkspace(user, m[1], env);
       if (m && !m[2] && request.method === 'PUT') return saveWorkspace(request, user, m[1], env);
+      if (m && !m[2] && request.method === 'DELETE') return deleteWorkspace(user, m[1], env);
       return json({ error: 'not_found' }, 404);
     } catch (err) {
       console.error(err);
@@ -264,6 +265,17 @@ async function saveWorkspace(request, user, id, env) {
   // Member and invite changes made in the app only grant or revoke access when an owner or admin saves them.
   if (canManage(member.role)) await syncAccess(env, id, member.owner_id, user, parseOr(prev.members, []), body.data.members);
   return json({ version: body.version + 1 });
+}
+
+async function deleteWorkspace(user, id, env) {
+  const ws = await env.DB.prepare('SELECT owner_id FROM workspaces WHERE id = ?').bind(id).first();
+  if (!ws || ws.owner_id !== user.id) return json({ error: 'not_found' }, 404);
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM invites WHERE workspace_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM workspace_members WHERE workspace_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM workspaces WHERE id = ?').bind(id),
+  ]);
+  return json({ ok: true });
 }
 
 /* The workspace's members list (data.members) decides who can open it. Each save by an owner or
