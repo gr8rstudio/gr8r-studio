@@ -1,0 +1,14 @@
+.git
+.github
+.vercel
+node_modules
+dist
+docs
+*.md
+.env*
+*.log
+.DS_Store
+__MACOSX
+.idea
+.vscode
+coverage

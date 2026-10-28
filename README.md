@@ -80,3 +80,15 @@ Every push and pull request runs lint, the format check and a production build
 ## Deploy
 
 `vercel.json` builds with Vite and serves `dist/`.
+
+The production container is a multi-stage image: Node 22 compiles the Vite bundle, then
+[nginx](https://nginx.org) serves `dist/` as a non-root user on port 8080. Put TLS in front
+of the container (a load balancer or reverse proxy). Logs go to stdout and stderr.
+
+```bash
+docker compose up --build
+# http://localhost:8080
+```
+
+`GET /healthz` returns `ok` for orchestrator health checks. Hashed files under `/assets/` are
+cached for a week; `index.html` is not cached, so a new image is picked up on the next load.

@@ -1,0 +1,18 @@
+name: gr8r-studio
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ./deploy/prod/Dockerfile
+    image: gr8r-studio
+    ports:
+      - '8080:8080'
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
