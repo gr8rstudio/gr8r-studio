@@ -375,7 +375,7 @@ export function settingsBody(sec, title) {
     case 'plan':
       return (
         H('Your subscription and usage.') +
-        `<div class="panel" style="padding:18px;margin-bottom:18px"><div class="row" style="flex-wrap:wrap"><div><div class="eyebrow">Current plan</div><div style="font-size:20px;font-weight:600;letter-spacing:-.015em;margin-top:4px">${esc(d.plan || 'Team')} <span class="muted" style="font-size:14px;font-weight:400">· $12 per member / month</span></div><div class="muted" style="font-size:13px">Renews ${fmtDate(dOff(7), true)} · Billed monthly</div></div><span class="sp"></span><button class="btn btn-secondary" data-a="go" data-r="settings" data-sec="invoices">View invoices</button></div>
+        `<div class="panel" style="padding:18px;margin-bottom:18px"><div class="row" style="flex-wrap:wrap"><div><div class="eyebrow">Current plan</div><div style="font-size:20px;font-weight:600;letter-spacing:-.015em;margin-top:4px">${esc(d.plan || 'Team')} <span class="muted" style="font-size:14px;font-weight:400">· Sample plan, no real billing</span></div><div class="muted" style="font-size:13px">Renews ${fmtDate(dOff(7), true)} · Billed monthly</div></div><span class="sp"></span><button class="btn btn-secondary" data-a="go" data-r="settings" data-sec="invoices">View invoices</button></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;margin-top:18px">${[
         ['Members', d.members.length, 10, ''],
         ['Storage', 12.4, 100, ' GB'],
@@ -387,13 +387,13 @@ export function settingsBody(sec, title) {
         )
         .join('')}</div></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">${[
-        ['Free', '$0', ['Up to 3 members', 'Unlimited tasks', '5 GB storage']],
-        ['Team', '$12', ['Up to 50 members', 'Timelines & custom views', '100 GB storage', 'Guest access']],
-        ['Business', '$24', ['Unlimited members', 'Advanced permissions', 'SAML SSO', '1 TB storage']],
+        ['Free', '—', ['Up to 3 members', 'Unlimited tasks', '5 GB storage']],
+        ['Team', '—', ['Up to 50 members', 'Timelines & custom views', '100 GB storage', 'Guest access']],
+        ['Business', '—', ['Unlimited members', 'Advanced permissions', 'SAML SSO', '1 TB storage']],
       ]
         .map(([n, pr, fs]) => {
           const cur = (d.plan || 'Team') === n;
-          return `<div class="plan ${cur ? 'cur' : ''}"><div class="row"><b>${n}</b>${cur ? '<span class="badge accent">Current</span>' : ''}</div><div class="pr">${pr}<span class="muted" style="font-size:12.5px;font-weight:400"> /member/mo</span></div><ul>${fs.map(f => `<li>${ic('check', 13)}${f}</li>`).join('')}</ul><div style="margin-top:8px">${cur ? `<button class="btn btn-secondary btn-block" disabled>Current plan</button>` : `<button class="btn ${n === 'Business' ? 'btn-primary' : 'btn-secondary'} btn-block" data-a="changePlan" data-v="${n}">${n === 'Free' ? 'Downgrade' : 'Upgrade'}</button>`}</div></div>`;
+          return `<div class="plan ${cur ? 'cur' : ''}"><div class="row"><b>${n}</b>${cur ? '<span class="badge accent">Current</span>' : ''}</div><div class="pr">${pr}</div><ul>${fs.map(f => `<li>${ic('check', 13)}${f}</li>`).join('')}</ul><div style="margin-top:8px">${cur ? `<button class="btn btn-secondary btn-block" disabled>Current plan</button>` : `<button class="btn ${n === 'Business' ? 'btn-primary' : 'btn-secondary'} btn-block" data-a="changePlan" data-v="${n}">${n === 'Free' ? 'Downgrade' : 'Upgrade'}</button>`}</div></div>`;
         })
         .join('')}</div>`
       );
@@ -405,7 +405,7 @@ export function settingsBody(sec, title) {
           'Expires 08/2028 · Default',
           `<button class="btn btn-secondary btn-sm" data-a="toastInfo" data-msg="Card updates open in a secure payment window">Update</button>`,
         ) +
-        srow('Billing email', 'Invoices and receipts are sent here.', `<span class="muted" style="user-select:all">hello@gr8rstudio.com</span>`) +
+        srow('Billing email', 'Invoices and receipts are sent here.', `<span class="muted" style="user-select:all">hello@example.com</span>`) +
         srow(
           'Billing address',
           '2150 Mission St, San Francisco, CA 94110',

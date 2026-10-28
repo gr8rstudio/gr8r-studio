@@ -6,7 +6,7 @@ export function seed() {
     {
       id: 'm1',
       name: 'Tanjim Islam',
-      email: 'hello@gr8rstudio.com',
+      email: 'hello@example.com',
       role: 'Owner',
       team: 'product',
       title: 'Head of Product',
@@ -18,7 +18,7 @@ export function seed() {
     {
       id: 'm2',
       name: 'Sarah Chen',
-      email: 'sarah@gr8rstudio.com',
+      email: 'sarah@example.com',
       role: 'Admin',
       team: 'design',
       title: 'Design Lead',
@@ -30,7 +30,7 @@ export function seed() {
     {
       id: 'm3',
       name: 'John Carter',
-      email: 'john@gr8rstudio.com',
+      email: 'john@example.com',
       role: 'Member',
       team: 'eng',
       title: 'Frontend Engineer',
@@ -42,7 +42,7 @@ export function seed() {
     {
       id: 'm4',
       name: 'Emma Wilson',
-      email: 'emma@gr8rstudio.com',
+      email: 'emma@example.com',
       role: 'Member',
       team: 'design',
       title: 'Product Designer',
@@ -54,7 +54,7 @@ export function seed() {
     {
       id: 'm5',
       name: 'Priya Patel',
-      email: 'priya@gr8rstudio.com',
+      email: 'priya@example.com',
       role: 'Member',
       team: 'mkt',
       title: 'Content Strategist',
@@ -66,7 +66,7 @@ export function seed() {
     {
       id: 'm6',
       name: 'Marcus Lee',
-      email: 'marcus@gr8rstudio.com',
+      email: 'marcus@example.com',
       role: 'Member',
       team: 'eng',
       title: 'Backend Engineer',
@@ -78,7 +78,7 @@ export function seed() {
     {
       id: 'm7',
       name: 'Lena Fischer',
-      email: 'lena@gr8rstudio.com',
+      email: 'lena@example.com',
       role: 'Admin',
       team: 'product',
       title: 'QA Lead',
@@ -90,7 +90,7 @@ export function seed() {
     {
       id: 'm8',
       name: 'Diego Alvarez',
-      email: 'diego@freelance.io',
+      email: 'diego@example.com',
       role: 'Guest',
       team: 'mkt',
       title: 'Freelance Copywriter',
@@ -114,7 +114,7 @@ export function seed() {
       start: dOff(-30),
       fav: true,
       members: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'],
-      desc: 'Rebuild gr8rstudio.com with a clearer information architecture, a responsive component library, and a faster CMS-driven blog.',
+      desc: 'Rebuild the company website with a clearer information architecture, a responsive component library, and a faster CMS-driven blog.',
       milestones: [
         { name: 'Wireframes signed off', date: dOff(2) },
         { name: 'Dev handoff', date: dOff(14) },
@@ -522,10 +522,10 @@ export function seed() {
       { id: 'se3', dev: 'Windows · Edge', loc: 'Oakland, US', at: 'Sep 12' },
     ],
     invoices: [
-      { id: 'INV-2026-009', date: dOff(-23), amt: '$96.00', st: 'Paid' },
-      { id: 'INV-2026-008', date: dOff(-53), amt: '$96.00', st: 'Paid' },
-      { id: 'INV-2026-007', date: dOff(-84), amt: '$80.00', st: 'Paid' },
-      { id: 'INV-2026-006', date: dOff(-114), amt: '$80.00', st: 'Paid' },
+      { id: 'INV-2026-009', date: dOff(-23), amt: '—', st: 'Paid' },
+      { id: 'INV-2026-008', date: dOff(-53), amt: '—', st: 'Paid' },
+      { id: 'INV-2026-007', date: dOff(-84), amt: '—', st: 'Paid' },
+      { id: 'INV-2026-006', date: dOff(-114), amt: '—', st: 'Paid' },
     ],
     tfa: false,
     notifPrefs: {

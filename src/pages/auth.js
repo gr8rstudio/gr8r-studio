@@ -20,7 +20,7 @@ export const icls = k => (S.ui.errors[k] ? 'is-error' : '');
 export function renderAuth() {
   const s = S.ui.auth;
   const e = S.ui.errors;
-  const f = S.ui.af || (S.ui.af = { email: 'hello@gr8rstudio.com', name: '' });
+  const f = S.ui.af || (S.ui.af = { email: 'hello@example.com', name: '' });
   if (s === 'onboarding') return renderOnboarding();
   if (s === 'login')
     return authShell(

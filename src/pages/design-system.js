@@ -99,7 +99,7 @@ export function pageSystem() {
         ['Text', `<input class="input" placeholder="Task name" id="ds-1">`],
         ['Focus', `<input class="input" value="Homepage wireframes" style="border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)" id="ds-2">`],
         ['Error', `<input class="input is-error" value="alex@" id="ds-3"><span class="err">${ic('circle-alert', 12)}Enter a valid email address</span>`],
-        ['Disabled', `<input class="input" value="hello@gr8rstudio.com" disabled id="ds-4">`],
+        ['Disabled', `<input class="input" value="hello@example.com" disabled id="ds-4">`],
         ['Search', `<div class="inwrap">${ic('search', 13)}<input class="input" placeholder="Search tasks" id="ds-5"><span class="kbd">/</span></div>`],
         ['Select', `<select class="select" id="ds-6"><option>In Progress</option><option>Review</option></select>`],
         [
